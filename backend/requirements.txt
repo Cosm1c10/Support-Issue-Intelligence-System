@@ -1,0 +1,17 @@
+# Support Ticket Issue Intelligence System — Python Backend Dependencies
+# Install with: pip install -r requirements.txt
+
+# Supabase client (includes PostgREST + Realtime support)
+supabase==2.10.0
+
+# OpenAI SDK for embeddings (text-embedding-3-small) and chat (gpt-4o-mini)
+openai==1.58.1
+
+# K-Means clustering on embedding vectors
+scikit-learn==1.6.0
+
+# Numerical array operations
+numpy==1.26.4
+
+# Environment variable management
+python-dotenv==1.0.1
