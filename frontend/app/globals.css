@@ -17,27 +17,6 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -47,146 +26,140 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* ─────────────────────────────────────────────
-   Apple-Inspired Premium Dark Design System
-───────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   kreo. Support Intelligence — Design System
+   Brand: #7C3AED primary · #C4B5FD lavender · #08080F base
+   ═══════════════════════════════════════════════════ */
 
 :root {
-  /* shadcn light (unused – app always dark) */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.58 0.22 27);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-
-  /* ── Apple design tokens ── */
-  --bg:   #000000;
-  --s1:   #0c0c0e;
-  --s2:   #111113;
-  --s3:   #1c1c1e;
-  --s4:   #2c2c2e;
-  --s5:   #3a3a3c;
-
-  --b0: rgba(255,255,255,0.04);
-  --b1: rgba(255,255,255,0.08);
-  --b2: rgba(255,255,255,0.14);
-  --b3: rgba(255,255,255,0.22);
-
-  --t1: #f5f5f7;
-  --t2: #a1a1a6;
-  --t3: #6e6e73;
-  --t4: #48484a;
-
-  --apple-blue:   #0a84ff;
-  --apple-green:  #30d158;
-  --apple-red:    #ff453a;
-  --apple-orange: #ff9f0a;
-  --apple-yellow: #ffd60a;
-  --apple-purple: #bf5af2;
-  --apple-teal:   #64d2ff;
-  --apple-indigo: #5e5ce6;
-
-  --blue-dim:   rgba(10, 132, 255, 0.12);
-  --green-dim:  rgba(48, 209,  88, 0.12);
-  --red-dim:    rgba(255, 69,  58, 0.12);
-  --orange-dim: rgba(255,159,  10, 0.12);
-
-  --smooth: cubic-bezier(0.16, 1, 0.30, 1);
-  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.dark {
-  /* Override shadcn tokens for true Apple black */
+  /* shadcn base (always dark) */
   --background: oklch(0 0 0);
   --foreground: oklch(0.97 0 0);
   --card: oklch(0.09 0 0);
   --card-foreground: oklch(0.97 0 0);
   --popover: oklch(0.09 0 0);
   --popover-foreground: oklch(0.97 0 0);
-  --primary: oklch(0.65 0.20 250);
+  --primary: oklch(0.58 0.24 293);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.16 0 0);
+  --secondary: oklch(0.14 0.02 278);
   --secondary-foreground: oklch(0.97 0 0);
-  --muted: oklch(0.16 0 0);
-  --muted-foreground: oklch(0.60 0 0);
-  --accent: oklch(0.20 0 0);
+  --muted: oklch(0.14 0.02 278);
+  --muted-foreground: oklch(0.58 0.04 278);
+  --accent: oklch(0.18 0.03 278);
   --accent-foreground: oklch(0.97 0 0);
-  --destructive: oklch(0.65 0.22 25);
+  --destructive: oklch(0.62 0.24 25);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.65 0.20 250);
-  --chart-1: oklch(0.65 0.20 250);
-  --chart-2: oklch(0.65 0.16 145);
-  --chart-3: oklch(0.65 0.20 25);
-  --chart-4: oklch(0.65 0.18 55);
-  --chart-5: oklch(0.65 0.18 295);
-  --sidebar: oklch(0.09 0 0);
+  --ring: oklch(0.58 0.24 293);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.07 0.02 278);
   --sidebar-foreground: oklch(0.97 0 0);
-  --sidebar-primary: oklch(0.65 0.20 250);
+  --sidebar-primary: oklch(0.58 0.24 293);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.14 0.02 278);
   --sidebar-accent-foreground: oklch(0.97 0 0);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.65 0.20 250);
+  --sidebar-ring: oklch(0.58 0.24 293);
+
+  /* ─── Kreo Brand Color System ─── */
+
+  /* Backgrounds — deep purple-black with purple DNA */
+  --bg:  #08080F;   /* pure deep */
+  --s1:  #0D0D1A;   /* nav, panel */
+  --s2:  #111120;   /* cards */
+  --s3:  #171728;   /* elevated cards, boxes */
+  --s4:  #1D1D30;   /* hover/active surfaces */
+  --s5:  #242440;   /* highest elevation */
+
+  /* Kreo Brand Purples — extracted exactly from kreo-tech.com */
+  --kreo:        #7C3AED;          /* Primary CTA purple */
+  --kreo-mid:    #8B5CF6;          /* Medium accent */
+  --kreo-bright: #A78BFA;          /* Button hover/active */
+  --kreo-soft:   #C4B5FD;          /* Lavender — kreo product card bg */
+  --kreo-xlight: rgba(196,181,253,0.12); /* Ambient lavender fill */
+  --kreo-glow:   rgba(124,58,237,0.20);  /* Purple glow */
+  --kreo-glow-sm:rgba(124,58,237,0.10);  /* Subtle glow */
+
+  /* Borders — tinted with kreo lavender for brand coherence */
+  --b0: rgba(196,181,253,0.05);
+  --b1: rgba(196,181,253,0.09);
+  --b2: rgba(196,181,253,0.15);
+  --b3: rgba(196,181,253,0.24);
+
+  /* Text — lavender-tinted whites */
+  --t1: #F2F0FF;   /* Primary — lavender white */
+  --t2: #C8C2E8;   /* Secondary */
+  --t3: #8880A8;   /* Tertiary */
+  --t4: #4A4568;   /* Quaternary/placeholder */
+
+  /* Trend semantic colors */
+  --trend-up:     #8B5CF6;
+  --trend-up-bg:  rgba(124,58,237,0.09);
+  --trend-up-b:   rgba(139,92,246,0.26);
+  --trend-up-gl:  rgba(124,58,237,0.07);
+
+  --trend-dn:     #F97316;
+  --trend-dn-bg:  rgba(249,115,22,0.09);
+  --trend-dn-b:   rgba(249,115,22,0.24);
+  --trend-dn-gl:  rgba(249,115,22,0.05);
+
+  --trend-st:     #6B7280;
+  --trend-st-bg:  rgba(107,114,128,0.07);
+  --trend-st-b:   rgba(107,114,128,0.18);
+  --trend-st-gl:  transparent;
+
+  /* Priority */
+  --p-crit:  #F43F5E;
+  --p-high:  #F97316;
+  --p-med:   #3B82F6;
+  --p-low:   #22C55E;
+
+  /* Status */
+  --green:  #22C55E;
+  --red:    #F43F5E;
+  --orange: #F97316;
+
+  /* Easings */
+  --smooth: cubic-bezier(0.16, 1, 0.30, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease:   cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
+/* ─── Base Styles ─── */
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+    border-color: var(--b1);
   }
   body {
-    @apply bg-background text-foreground;
     background: var(--bg);
     color: var(--t1);
-    letter-spacing: -0.011em;
+    font-family: var(--font-sans), 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    letter-spacing: -0.013em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Subtle dot grid — premium SaaS background texture */
+    background-image: radial-gradient(circle, rgba(196,181,253,0.045) 1px, transparent 1px);
+    background-size: 28px 28px;
   }
   html {
-    @apply font-sans;
     color-scheme: dark;
     scroll-behavior: smooth;
   }
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--s4); border-radius: 3px; }
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--s4); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--s5); }
 
-::selection { background: rgba(10,132,255,0.25); }
-
+::selection { background: rgba(124,58,237,0.32); }
 input::placeholder { color: var(--t4) !important; }
 
-/* ── Keyframes ── */
+/* ─── Keyframes ─── */
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(14px); }
+  from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0);    }
 }
 @keyframes fade-in {
@@ -194,17 +167,71 @@ input::placeholder { color: var(--t4) !important; }
   to   { opacity: 1; }
 }
 @keyframes slide-panel {
-  from { transform: translateX(100%); }
+  from { transform: translateX(104%); }
   to   { transform: translateX(0);    }
 }
-@keyframes pulse-live {
-  0%,100% { opacity:1; transform:scale(1);    box-shadow:0 0 0 0   rgba(48,209,88,0.5); }
-  60%     { opacity:.7; transform:scale(0.88); box-shadow:0 0 0 7px rgba(48,209,88,0);   }
+@keyframes modal-in {
+  from { opacity: 0; transform: translate(-50%,-50%) scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: translate(-50%,-50%) scale(1)    translateY(0);   }
 }
-@keyframes spin       { to { transform: rotate(360deg); } }
-@keyframes skeleton   { 0%,100% { opacity:.25; } 50% { opacity:.45; } }
+@keyframes pulse-live {
+  0%,100% { opacity:1; transform:scale(1);     box-shadow:0 0 0 0   rgba(34,197,94,0.55); }
+  60%     { opacity:.75; transform:scale(0.9); box-shadow:0 0 0 8px rgba(34,197,94,0);    }
+}
+@keyframes spin     { to   { transform: rotate(360deg); } }
+@keyframes skeleton {
+  0%,100% { opacity:.18; }
+  50%     { opacity:.32; }
+}
+@keyframes shimmer {
+  from { background-position: -400px 0; }
+  to   { background-position:  400px 0; }
+}
+@keyframes glow-pulse {
+  0%,100% { box-shadow: 0 0 20px rgba(124,58,237,0.15); }
+  50%     { box-shadow: 0 0 40px rgba(124,58,237,0.30); }
+}
 
-/* ── Utility classes ── */
-.live-dot  { animation: pulse-live  2.4s ease-in-out infinite; }
-.spin      { animation: spin         0.7s linear      infinite; }
-.skeleton  { animation: skeleton     1.8s ease-in-out infinite; }
+/* ─── Utility classes ─── */
+.live-dot   { animation: pulse-live  2.6s ease-in-out infinite; }
+.spin       { animation: spin        0.75s linear      infinite; }
+.skeleton   { animation: skeleton    1.9s ease-in-out  infinite; }
+.glow-pulse { animation: glow-pulse  3s    ease-in-out  infinite; }
+
+/* Shimmer skeleton */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--s2) 0%,
+    var(--s3) 50%,
+    var(--s2) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* Card base — consistent elevation system */
+.card {
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  border-radius: 18px;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), transform 0.2s var(--ease);
+}
+.card:hover {
+  border-color: var(--b2);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px var(--b1);
+}
+
+/* Focus visible ring */
+:focus-visible {
+  outline: 2px solid rgba(124,58,237,0.7);
+  outline-offset: 2px;
+}
+
+/* Number display style */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.04em;
+}

@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
-import { Instrument_Sans } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-const instrumentSans = Instrument_Sans({
+const jakarta = Plus_Jakarta_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700", "800"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Support Intelligence — Issue Clustering Dashboard",
+  title: "kreo. Support Intelligence",
   description:
-    "AI-powered support ticket clustering with semantic similarity and automated trend detection across 30-day windows.",
+    "AI-powered support ticket intelligence — semantic clustering, trend detection, and agentic actions for kreo gaming peripherals.",
 };
 
 export default function RootLayout({
@@ -20,9 +20,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${instrumentSans.variable} antialiased`}>
-        {children}
-      </body>
+      <body className={`${jakarta.variable} antialiased`}>{children}</body>
     </html>
   );
 }

@@ -15,3 +15,6 @@ numpy==1.26.4
 
 # Environment variable management
 python-dotenv==1.0.1
+
+# Apify client for Amazon review scraping
+apify-client==1.8.1
