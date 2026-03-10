@@ -19,6 +19,9 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   BarChart2,
+  Upload,
+  Database,
+  Globe,
 } from "lucide-react";
 
 /* ─────────────────────────────────────────────────────
@@ -1572,6 +1575,230 @@ function SkeletonCard({ delay }: { delay: number }) {
 }
 
 /* ─────────────────────────────────────────────────────
+   CSV Upload Modal
+───────────────────────────────────────────────────── */
+
+function CsvUploadModal({
+  onUpload,
+  onClose,
+  status,
+  error,
+}: {
+  onUpload: (file: File) => void;
+  onClose: () => void;
+  status: string | null;
+  error: string | null;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isProcessing = !!status && !status.startsWith("Done");
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) onUpload(file);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) onUpload(file);
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(0,0,0,0.72)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 24,
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) onClose(); }}
+    >
+      <div
+        style={{
+          background: "var(--s2)",
+          border: "1px solid var(--b2)",
+          borderRadius: 16,
+          padding: 28,
+          width: "100%",
+          maxWidth: 480,
+          boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 9,
+              background: "rgba(124,58,237,0.12)",
+              border: "1px solid rgba(139,92,246,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <Upload size={14} color="var(--kreo-soft)" />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)", letterSpacing: "-0.02em" }}>
+                Upload Historical CSV
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--t4)", marginTop: 1 }}>
+                Tickets are embedded and clustered automatically
+              </div>
+            </div>
+          </div>
+          {!isProcessing && (
+            <button onClick={onClose} style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: "var(--t4)", display: "flex", padding: 4, borderRadius: 6,
+            }}>
+              <X size={15} />
+            </button>
+          )}
+        </div>
+
+        {/* Drag-and-drop zone */}
+        {!status && !error && (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => inputRef.current?.click()}
+            style={{
+              border: `1.5px dashed ${dragOver ? "rgba(139,92,246,0.6)" : "var(--b2)"}`,
+              borderRadius: 12,
+              padding: "36px 24px",
+              textAlign: "center",
+              cursor: "pointer",
+              background: dragOver ? "rgba(124,58,237,0.05)" : "var(--s3)",
+              transition: "all 0.15s",
+              marginBottom: 20,
+            }}
+          >
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".csv"
+              onChange={handleFileChange}
+              style={{ display: "none" }}
+            />
+            <Upload size={22} color="var(--t4)" style={{ margin: "0 auto 12px" }} />
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--t2)", marginBottom: 6 }}>
+              {dragOver ? "Drop to upload" : "Drag & drop your CSV file"}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--t4)", marginBottom: 14 }}>
+              or click to browse
+            </div>
+            <div style={{
+              display: "inline-block",
+              padding: "4px 10px",
+              background: "var(--s4)",
+              border: "1px solid var(--b1)",
+              borderRadius: 6,
+              fontSize: 11,
+              color: "var(--t4)",
+              fontFamily: "monospace",
+            }}>
+              subject, description, date, priority, ticket_type, product_area
+            </div>
+          </div>
+        )}
+
+        {/* Processing state */}
+        {status && (
+          <div style={{
+            padding: "24px",
+            background: "var(--s3)",
+            border: "1px solid var(--b1)",
+            borderRadius: 12,
+            marginBottom: 20,
+            textAlign: "center",
+          }}>
+            {isProcessing && (
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                <RefreshCw size={18} color="var(--kreo-soft)" className="spin" />
+              </div>
+            )}
+            <div style={{
+              fontSize: 13.5,
+              fontWeight: 600,
+              color: status.startsWith("Done") ? "#22C55E" : "var(--t2)",
+              letterSpacing: "-0.01em",
+            }}>
+              {status}
+            </div>
+            {isProcessing && (
+              <div style={{ fontSize: 11.5, color: "var(--t4)", marginTop: 6 }}>
+                This may take a minute for large files
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error state */}
+        {error && (
+          <div style={{
+            padding: "12px 16px",
+            background: "rgba(244,63,94,0.07)",
+            border: "1px solid rgba(244,63,94,0.22)",
+            borderRadius: 10,
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+          }}>
+            <AlertCircle size={14} color="var(--red)" style={{ flexShrink: 0, marginTop: 1 }} />
+            <div style={{ fontSize: 12.5, color: "var(--red)", lineHeight: 1.5 }}>{error}</div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          {!isProcessing && (
+            <button
+              onClick={onClose}
+              style={{
+                padding: "7px 16px",
+                background: "var(--s3)",
+                border: "1px solid var(--b1)",
+                borderRadius: 8,
+                color: "var(--t3)",
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {status?.startsWith("Done") ? "Close" : "Cancel"}
+            </button>
+          )}
+          {!status && !error && (
+            <button
+              onClick={() => inputRef.current?.click()}
+              style={{
+                padding: "7px 16px",
+                background: "var(--kreo)",
+                border: "1px solid rgba(139,92,246,0.4)",
+                borderRadius: 8,
+                color: "#fff",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              Select File
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────
    Main Page
 ───────────────────────────────────────────────────── */
 
@@ -1592,12 +1819,24 @@ export default function Home() {
   const [qaLoading, setQaLoading] = useState(false);
   const [qaIsMock, setQaIsMock]   = useState(false);
 
+  /* Spaces */
+  const [space, setSpace] = useState<"support" | "marketplace">("support");
+
+  /* Marketplace sync */
+  const [isSyncing, setIsSyncing]   = useState(false);
+  const [syncError, setSyncError]   = useState<string | null>(null);
+
+  /* CSV upload */
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvStatus, setCsvStatus]       = useState<string | null>(null);
+  const [csvError, setCsvError]         = useState<string | null>(null);
+
   /* ── Fetch clusters ── */
   const fetchClusters = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch("/api/clusters");
+      const res = await fetch(`/api/clusters?source=${space}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setClusters(data.clusters ?? []);
@@ -1609,7 +1848,7 @@ export default function Home() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [space]);
 
   useEffect(() => {
     fetchClusters();
@@ -1643,6 +1882,48 @@ export default function Home() {
       setQaLoading(false);
     }
   }, []);
+
+  /* ── Sync Marketplace Data ── */
+  const handleSync = useCallback(async () => {
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await fetch("/api/sync-marketplaces", { method: "POST" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? `HTTP ${res.status}`);
+      }
+      await fetchClusters(true);
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [fetchClusters]);
+
+  /* ── CSV Upload ── */
+  const handleCsvUpload = useCallback(async (file: File) => {
+    setCsvStatus("Uploading file...");
+    setCsvError(null);
+    // Simulate progress stages while the API processes
+    const t1 = setTimeout(() => setCsvStatus("Vectorizing data..."),    2_500);
+    const t2 = setTimeout(() => setCsvStatus("Clustering issues..."),   7_000);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload-csv", { method: "POST", body: formData });
+      clearTimeout(t1); clearTimeout(t2);
+      const data = await res.json() as { inserted?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setCsvStatus(`Done — ${data.inserted ?? 0} tickets ingested.`);
+      await fetchClusters(true);
+      setTimeout(() => { setShowCsvModal(false); setCsvStatus(null); }, 2_200);
+    } catch (err) {
+      clearTimeout(t1); clearTimeout(t2);
+      setCsvError(err instanceof Error ? err.message : "Upload failed");
+      setCsvStatus(null);
+    }
+  }, [fetchClusters]);
 
   /* ── Derived ── */
   const filtered = clusters.filter((c) => {
@@ -1765,6 +2046,39 @@ export default function Home() {
                 {timeAgo(lastUpdated.toISOString())}
               </span>
             )}
+
+            <button
+              onClick={() => { setShowCsvModal(true); setCsvStatus(null); setCsvError(null); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "5px 11px",
+                background: "rgba(124,58,237,0.10)",
+                border: "1px solid rgba(139,92,246,0.28)",
+                borderRadius: 8,
+                color: "var(--kreo-soft)",
+                fontSize: 11.5,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "all 0.14s",
+                letterSpacing: "-0.01em",
+              }}
+              onMouseEnter={(e) => {
+                const b = e.currentTarget as HTMLButtonElement;
+                b.style.background = "rgba(124,58,237,0.18)";
+                b.style.borderColor = "rgba(139,92,246,0.50)";
+              }}
+              onMouseLeave={(e) => {
+                const b = e.currentTarget as HTMLButtonElement;
+                b.style.background = "rgba(124,58,237,0.10)";
+                b.style.borderColor = "rgba(139,92,246,0.28)";
+              }}
+            >
+              <Upload size={11} />
+              Upload CSV
+            </button>
 
             <button
               onClick={() => fetchClusters(true)}
@@ -1924,6 +2238,56 @@ export default function Home() {
           </p>
         </div>
 
+        {/* ── Spaces Toggle ── */}
+        <div
+          style={{
+            display: "inline-flex",
+            gap: 0,
+            background: "var(--s2)",
+            border: "1px solid var(--b1)",
+            borderRadius: 10,
+            padding: 3,
+            marginBottom: 32,
+            opacity: 0,
+            animation: "fade-up 0.45s var(--smooth) 0.20s forwards",
+          }}
+        >
+          {(
+            [
+              ["support",     "Internal Support", Database],
+              ["marketplace", "Marketplaces",      Globe],
+            ] as const
+          ).map(([id, label, Icon]) => {
+            const active = space === id;
+            return (
+              <button
+                key={id}
+                onClick={() => { setSpace(id); setFilter("all"); setSearch(""); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 16px",
+                  borderRadius: 7,
+                  fontSize: 12.5,
+                  fontWeight: active ? 700 : 500,
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "background 0.14s, color 0.14s",
+                  background: active ? "var(--s4)" : "transparent",
+                  color: active ? "var(--t1)" : "var(--t3)",
+                  fontFamily: "inherit",
+                  letterSpacing: active ? "-0.02em" : "0",
+                  boxShadow: active ? "0 0 0 1px var(--b2)" : "none",
+                }}
+              >
+                <Icon size={12} />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* ── Metrics ── */}
         {!loading && (
           <div
@@ -2078,6 +2442,59 @@ export default function Home() {
           </span>
         </div>
 
+        {/* ── Marketplace Sync Bar ── */}
+        {space === "marketplace" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "12px 16px",
+              background: "rgba(124,58,237,0.06)",
+              border: "1px solid rgba(139,92,246,0.18)",
+              borderRadius: 10,
+              marginBottom: 20,
+              opacity: 0,
+              animation: "fade-up 0.35s var(--smooth) 0s forwards",
+            }}
+          >
+            <Globe size={13} color="var(--kreo-soft)" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: "var(--t3)", flex: 1, fontWeight: 500 }}>
+              Showing Amazon review tickets ingested via Apify.
+            </span>
+            {syncError && (
+              <span style={{ fontSize: 11.5, color: "var(--red)", fontWeight: 500 }}>
+                {syncError}
+              </span>
+            )}
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 14px",
+                background: isSyncing ? "var(--s3)" : "var(--kreo)",
+                border: "1px solid rgba(139,92,246,0.35)",
+                borderRadius: 8,
+                color: isSyncing ? "var(--t3)" : "#fff",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: isSyncing ? "default" : "pointer",
+                fontFamily: "inherit",
+                letterSpacing: "-0.01em",
+                transition: "all 0.14s",
+                opacity: isSyncing ? 0.7 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <RefreshCw size={11} className={isSyncing ? "spin" : ""} style={{ transition: "none" }} />
+              {isSyncing ? "Scraping marketplace data..." : "[ Sync Marketplaces Data ]"}
+            </button>
+          </div>
+        )}
+
         {/* ── Error ── */}
         {error && (
           <div
@@ -2204,6 +2621,16 @@ export default function Home() {
             setQaEmail(null);
             setQaIsMock(false);
           }}
+        />
+      )}
+
+      {/* ── CSV Upload Modal ── */}
+      {showCsvModal && (
+        <CsvUploadModal
+          onUpload={handleCsvUpload}
+          onClose={() => { setShowCsvModal(false); setCsvStatus(null); setCsvError(null); }}
+          status={csvStatus}
+          error={csvError}
         />
       )}
     </div>

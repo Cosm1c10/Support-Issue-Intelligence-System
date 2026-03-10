@@ -51,7 +51,7 @@ ACTOR_ID = "junglee/amazon-reviews-scraper"  # ← replace if using a different 
 
 # ASIN of the Kreo Swarm65 keyboard on Amazon India / Amazon.com
 # Find it in the product URL: amazon.in/dp/<ASIN>
-PRODUCT_ASIN = "B0PLACEHOLDER"  # ← replace with the real ASIN
+PRODUCT_ASIN = "B0BZDCPBYH"  # Kreo Swarm65 Mechanical Keyboard — amazon.in
 
 # Only ingest reviews at or below this star rating (dissatisfied customers)
 MAX_STARS = 3
@@ -86,15 +86,13 @@ def fetch_amazon_reviews() -> list[dict]:
     print(f"\n[1/4] Starting Apify actor run for ASIN: {PRODUCT_ASIN} …")
 
     actor_input = {
-        "asins": [PRODUCT_ASIN],
-        # Scrape up to 100 reviews per page, 3 pages = 300 max reviews
+        "productUrls": [
+            {"url": f"https://www.amazon.in/dp/{PRODUCT_ASIN}"}
+        ],
+        # Maximum reviews to scrape
         "maxReviews": 100,
-        "reviewsStartPage": 1,
-        "reviewsEndPage": 3,
-        # Only fetch verified purchase reviews for higher signal
-        "filterByStars": "all_stars",
         # Sort by most recent so we catch new complaints quickly
-        "sortBy": "recent",
+        "sort": "recent",
     }
 
     # .call() starts the actor and blocks until the run finishes
