@@ -89,12 +89,10 @@ export async function GET(request: Request) {
       );
     }
 
-    const clusterIds = [
-      ...new Set((members ?? []).map((m) => m.cluster_id)),
-    ];
+    const clusterIdSet = new Set((members ?? []).map((m) => m.cluster_id));
 
     const filtered = (allClusters as { id: string }[]).filter((c) =>
-      clusterIds.includes(c.id)
+      clusterIdSet.has(c.id)
     );
 
     return NextResponse.json(

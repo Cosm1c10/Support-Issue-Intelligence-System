@@ -639,8 +639,14 @@ def name_cluster(ticket_subjects: list[str]) -> tuple[str, str]:
         response_format={"type": "json_object"},
         temperature=0.2,
     )
-    data = json.loads(response.choices[0].message.content)
-    return data["name"], data["description"]
+    try:
+        raw_content = (response.choices[0].message.content or "").strip()
+        data = json.loads(raw_content)
+    except (json.JSONDecodeError, ValueError, AttributeError, IndexError) as exc:
+        raise RuntimeError(f"GPT returned non-JSON response: {exc}") from exc
+    name = data.get("name") or "Unnamed Cluster"
+    description = data.get("description") or "No description available."
+    return name, description
 
 
 def calculate_trend(prev: int, curr: int) -> str:

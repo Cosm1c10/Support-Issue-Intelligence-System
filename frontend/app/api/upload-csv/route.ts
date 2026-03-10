@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { writeFile, unlink } from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { randomUUID } from "crypto";
 import { join, resolve } from "path";
 import { tmpdir } from "os";
 
@@ -21,8 +22,11 @@ import { tmpdir } from "os";
 export const maxDuration = 300;
 
 const execFileAsync = promisify(execFile);
-const BACKEND_DIR = resolve(process.cwd(), "..", "backend");
+// Allow explicit override via env (e.g. for containerised / production deployments)
+const BACKEND_DIR = process.env.BACKEND_DIR ?? resolve(process.cwd(), "..", "backend");
 const SCRIPT_PATH = join(BACKEND_DIR, "scripts", "process_csv.py");
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function getPythonExec(): string {
   return process.platform === "win32" ? "py" : "python3";
@@ -50,9 +54,17 @@ export async function POST(request: Request) {
       );
     }
 
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File too large (max 10 MB, got ${(file.size / 1024 / 1024).toFixed(1)} MB).` },
+        { status: 413 }
+      );
+    }
+
     // ── Write to temp file ───────────────────────────────────
+    // Use a UUID suffix to avoid collisions under concurrent requests
     const bytes = await file.arrayBuffer();
-    tempPath = join(tmpdir(), `kreo_csv_${Date.now()}.csv`);
+    tempPath = join(tmpdir(), `kreo_csv_${randomUUID()}.csv`);
     await writeFile(tempPath, Buffer.from(bytes));
 
     // ── Execute Python processing script ─────────────────────
@@ -76,15 +88,23 @@ export async function POST(request: Request) {
     const message = err instanceof Error ? err.message : "Processing failed";
     const stderr = (err as { stderr?: string }).stderr ?? "";
 
-    // Return the last meaningful stderr line as the user-facing error
-    const userError =
+    // Log full details server-side only — never expose internal paths or stack traces
+    console.error("[/api/upload-csv]", message, "\nSTDERR:", stderr);
+
+    // Extract a safe user-facing line: skip tracebacks, file paths, and frame lines
+    const safeError =
       stderr
         .split("\n")
-        .filter((l) => l.trim() && !l.startsWith("WARNING") && !l.startsWith("Traceback"))
-        .pop() ?? message;
+        .filter(
+          (l) =>
+            l.trim() &&
+            !l.startsWith("WARNING") &&
+            !l.startsWith("Traceback") &&
+            !l.match(/^\s*(File |at )/)
+        )
+        .pop() ?? "CSV processing failed. Please check your file format and try again.";
 
-    console.error("[/api/upload-csv]", message, "\nSTDERR:", stderr);
-    return NextResponse.json({ error: userError }, { status: 500 });
+    return NextResponse.json({ error: safeError }, { status: 500 });
   } finally {
     // Always clean up the temp file
     if (tempPath) {

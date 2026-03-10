@@ -52,6 +52,7 @@ interface ClusterRow {
 
 // ── Cosine similarity between two equal-length vectors ────────
 function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
   let dot = 0, normA = 0, normB = 0;
   for (let i = 0; i < a.length; i++) {
     dot   += a[i] * b[i];
@@ -89,6 +90,16 @@ async function supabaseFetch(
 
 // ── Main handler ───────────────────────────────────────────────
 export async function POST(request: Request) {
+  // Verify optional shared secret to prevent unauthorized calls.
+  // Set WEBHOOK_SECRET in your environment to enable this check.
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const provided = request.headers.get("x-webhook-secret");
+    if (provided !== webhookSecret) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   // Parse body
   let body: WebhookPayload;
   try {
@@ -136,7 +147,11 @@ export async function POST(request: Request) {
   }
 
   const embedData = await embedRes.json();
-  const embedding: number[] = embedData.data[0].embedding;
+  const embedding: number[] | undefined = embedData?.data?.[0]?.embedding;
+  if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+    console.error("[webhook] Unexpected embedding response shape:", embedData);
+    return NextResponse.json({ error: "Unexpected embedding response" }, { status: 502 });
+  }
 
   // ── 2. Fetch all cluster centroids ───────────────────────────
   const clustersRes = await supabaseFetch(
@@ -206,24 +221,37 @@ export async function POST(request: Request) {
   // ── 5. Link ticket to best cluster ───────────────────────────
   if (bestClusterId && ticket?.id) {
     // cluster_members row
-    await supabaseFetch("cluster_members", {
+    const memberRes = await supabaseFetch("cluster_members", {
       method: "POST",
       body: JSON.stringify({
         ticket_id:        ticket.id,
         cluster_id:       bestClusterId,
-        similarity_score: parseFloat(bestScore.toFixed(6)),
+        similarity_score: isFinite(bestScore) ? parseFloat(bestScore.toFixed(6)) : null,
       }),
     });
+    if (!memberRes.ok) {
+      const detail = await memberRes.text();
+      // Non-fatal: ticket is already saved — log and continue
+      console.error("[webhook] cluster_members insert error:", detail);
+    }
 
-    // ── 6. Increment ticket_count + curr_window_count atomically
-    // We read the current values from the clusters list we already fetched
-    // (safe for low-volume webhook traffic; for high throughput use a DB function)
+    // ── 6. Increment ticket_count + curr_window_count
+    // Re-fetch the current row immediately before patching to minimise the
+    // race window under concurrent webhooks. For high-throughput scenarios,
+    // replace with an atomic DB increment function (e.g. a Supabase RPC).
     if (bestCluster) {
+      const freshRes = await supabaseFetch(
+        `issue_clusters?id=eq.${bestClusterId}&select=ticket_count,curr_window_count`
+      );
+      const freshCounts = freshRes.ok
+        ? ((await freshRes.json()) as { ticket_count: number; curr_window_count: number }[])[0]
+        : null;
+      const base = freshCounts ?? bestCluster;
       await supabaseFetch(`issue_clusters?id=eq.${bestClusterId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          ticket_count:      (bestCluster.ticket_count ?? 0) + 1,
-          curr_window_count: (bestCluster.curr_window_count ?? 0) + 1,
+          ticket_count:      (base.ticket_count ?? 0) + 1,
+          curr_window_count: (base.curr_window_count ?? 0) + 1,
           updated_at:        new Date().toISOString(),
         }),
       });
@@ -236,6 +264,7 @@ export async function POST(request: Request) {
     db_id:              ticket?.id ?? null,
     assigned_cluster:   bestClusterName,
     assigned_cluster_id: bestClusterId,
-    similarity_score:   parseFloat(bestScore.toFixed(6)),
+    // bestScore stays -Infinity when no cluster had a valid centroid; use null instead
+    similarity_score:   isFinite(bestScore) ? parseFloat(bestScore.toFixed(6)) : null,
   });
 }

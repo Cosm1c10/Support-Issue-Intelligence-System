@@ -142,7 +142,13 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     embeddings = []
     for i in range(0, len(texts), BATCH_SIZE):
         batch = texts[i : i + BATCH_SIZE]
-        response = openai_client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+        try:
+            response = openai_client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+        except Exception as exc:
+            raise RuntimeError(
+                f"OpenAI embedding failed for batch {i // BATCH_SIZE + 1} "
+                f"(texts {i}–{min(i + BATCH_SIZE, len(texts)) - 1}): {exc}"
+            ) from exc
         embeddings.extend([d.embedding for d in response.data])
         print(f"   Embedded {min(i + BATCH_SIZE, len(texts))}/{len(texts)}")
         if i + BATCH_SIZE < len(texts):
@@ -151,7 +157,13 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
 
 def parse_embedding(value) -> list[float]:
-    return json.loads(value) if isinstance(value, str) else value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return value if isinstance(value, list) else []
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:

@@ -13,15 +13,26 @@ import { resolve, join } from "path";
 
 const execFileAsync = promisify(execFile);
 
-// Resolve to backend/ relative to this Next.js project root (frontend/)
-const BACKEND_DIR = resolve(process.cwd(), "..", "backend");
+// Allow explicit override via env (e.g. for containerised / production deployments)
+// Falls back to resolving relative to the Next.js project root in development.
+const BACKEND_DIR = process.env.BACKEND_DIR ?? resolve(process.cwd(), "..", "backend");
 const SCRIPT_PATH = join(BACKEND_DIR, "scripts", "sync_amazon.py");
 
 function getPythonExec(): string {
   return process.platform === "win32" ? "py" : "python3";
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  // Protect this resource-consuming endpoint with an optional shared secret.
+  // Set SYNC_SECRET in your environment to enable verification.
+  const syncSecret = process.env.SYNC_SECRET;
+  if (syncSecret) {
+    const provided = request.headers.get("x-sync-secret");
+    if (provided !== syncSecret) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   try {
     const python = getPythonExec();
 

@@ -56,11 +56,17 @@ function getMockSummary(clusterName: string): string {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { clusterName, tickets } = body as {
     clusterName: string;
     tickets: TicketInput[];
   };
+  if (!clusterName || typeof clusterName !== "string") {
+    return NextResponse.json({ error: "`clusterName` is required" }, { status: 400 });
+  }
 
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -77,22 +83,25 @@ export async function POST(request: Request) {
       .map((t) => `• ${t.subject}`)
       .join("\n");
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a senior support analyst at a D2C hardware company. Analyse the provided support tickets and return exactly 2 sentences: (1) what the root cause is, (2) what its technical impact is. Be specific, technical, and actionable. No filler. No bullet points—just 2 plain sentences.",
-        },
-        {
-          role: "user",
-          content: `Issue cluster: "${clusterName}"\n\nRecent tickets:\n${ticketList}\n\nProvide a 2-sentence root cause summary.`,
-        },
-      ],
-      max_tokens: 160,
-      temperature: 0.25,
-    });
+    const completion = await client.chat.completions.create(
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a senior support analyst at a D2C hardware company. Analyse the provided support tickets and return exactly 2 sentences: (1) what the root cause is, (2) what its technical impact is. Be specific, technical, and actionable. No filler. No bullet points—just 2 plain sentences.",
+          },
+          {
+            role: "user",
+            content: `Issue cluster: "${clusterName}"\n\nRecent tickets:\n${ticketList}\n\nProvide a 2-sentence root cause summary.`,
+          },
+        ],
+        max_tokens: 160,
+        temperature: 0.25,
+      },
+      { signal: AbortSignal.timeout(30_000) }
+    );
 
     const summary =
       completion.choices[0]?.message?.content?.trim() ||

@@ -21,10 +21,11 @@ so re-running never creates duplicates.
 
 import os
 import sys
+import re
 import time
 import json
-from datetime import timezone
-from uuid import uuid4
+import hashlib
+from datetime import datetime, timezone
 
 # Force UTF-8 on Windows terminals
 if hasattr(sys.stdout, "reconfigure"):
@@ -100,6 +101,12 @@ def fetch_amazon_reviews() -> list[dict]:
 
     print(f"   Run finished — status: {run['status']}  id: {run['id']}")
 
+    if run.get("status") != "SUCCEEDED":
+        raise RuntimeError(
+            f"Apify actor run did not succeed (status={run.get('status')!r}, "
+            f"id={run.get('id')!r}). Check the Apify console for details."
+        )
+
     # Retrieve items from the default dataset
     items = list(
         apify_client.dataset(run["defaultDatasetId"]).iterate_items()
@@ -129,6 +136,29 @@ def normalise_star_rating(item: dict) -> int | None:
     return None
 
 
+def _parse_review_date(raw: str | None) -> str | None:
+    """Parse a review date string into ISO-8601 format for Supabase.
+    Returns None if the value is absent or unparseable (Supabase will use NOW()).
+    """
+    if not raw:
+        return None
+    for fmt in ("%Y-%m-%d", "%B %d, %Y", "%d %B %Y", "%m/%d/%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(raw.strip(), fmt).replace(tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            continue
+    # Handle strings like "Reviewed in India on January 15, 2023"
+    match = re.search(r"(\w+ \d{1,2}, \d{4})", raw)
+    if match:
+        try:
+            return datetime.strptime(match.group(1), "%B %d, %Y").replace(tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            pass
+    print(f"   Warning: could not parse date {raw!r} — using Supabase default NOW().",
+          file=sys.stderr)
+    return None
+
+
 def filter_negative_reviews(items: list[dict]) -> list[dict]:
     """Keep only reviews with star rating ≤ MAX_STARS."""
     negative = []
@@ -149,13 +179,17 @@ def map_review_to_ticket(item: dict) -> dict | None:
     Convert an Apify Amazon review item to a ticket row.
     Returns None if the review lacks the minimum required fields.
     """
-    # Review ID — used to build a stable, unique ticket_id
+    # Review ID — used to build a stable, unique ticket_id.
+    # uuid4() is intentionally avoided: a random fallback would break idempotency
+    # by generating a new ID on every run for the same review.
     review_id = (
         item.get("id")
         or item.get("reviewId")
         or item.get("asin_id")
-        or str(uuid4())
     )
+    if not review_id:
+        content = f"{item.get('title', '')}{item.get('text', '')}{item.get('date', '')}"
+        review_id = hashlib.md5(content.encode("utf-8")).hexdigest()[:16]
 
     # Title / subject
     subject = (
@@ -190,8 +224,9 @@ def map_review_to_ticket(item: dict) -> dict | None:
     else:
         priority = "Medium"
 
-    # Parse date if available
-    review_date = item.get("date") or item.get("reviewDate") or item.get("publishedDate")
+    # Parse and validate date — Supabase requires ISO-8601
+    raw_date = item.get("date") or item.get("reviewDate") or item.get("publishedDate")
+    review_date = _parse_review_date(raw_date)
 
     return {
         "ticket_id":    f"AMZ-{review_id}",

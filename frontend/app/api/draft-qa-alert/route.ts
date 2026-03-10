@@ -53,13 +53,19 @@ Do not reply to this automated message — use the Slack #support-escalations ch
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { clusterName, prevCount, currCount, tickets } = body as {
     clusterName: string;
     prevCount: number;
     currCount: number;
     tickets: TicketInput[];
   };
+  if (!clusterName || typeof clusterName !== "string") {
+    return NextResponse.json({ error: "`clusterName` is required" }, { status: 400 });
+  }
 
   const pctChange =
     prevCount > 0 ? Math.round(((currCount - prevCount) / prevCount) * 100) : 100;

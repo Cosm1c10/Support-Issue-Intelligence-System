@@ -291,6 +291,10 @@ function AiRootCause({ cluster }: { cluster: Cluster }) {
           tickets: cluster.example_tickets,
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
       const data = await res.json();
       setSummary(data.summary);
       setIsMock(data.mock ?? false);
@@ -518,6 +522,8 @@ function QaAlertModal({
     navigator.clipboard.writeText(email).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
+    }).catch((err) => {
+      console.error("[clipboard] Write failed:", err);
     });
   }, [email]);
 
@@ -1873,6 +1879,10 @@ export default function Home() {
           tickets: cluster.example_tickets,
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
       const data = await res.json();
       setQaEmail(data.email);
       setQaIsMock(data.mock ?? false);
@@ -1905,21 +1915,25 @@ export default function Home() {
   const handleCsvUpload = useCallback(async (file: File) => {
     setCsvStatus("Uploading file...");
     setCsvError(null);
+    // Collect all timer IDs so they can all be cleared on success, error, or unmount
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const clearTimers = () => timers.forEach(clearTimeout);
     // Simulate progress stages while the API processes
-    const t1 = setTimeout(() => setCsvStatus("Vectorizing data..."),    2_500);
-    const t2 = setTimeout(() => setCsvStatus("Clustering issues..."),   7_000);
+    timers.push(setTimeout(() => setCsvStatus("Vectorizing data..."),  2_500));
+    timers.push(setTimeout(() => setCsvStatus("Clustering issues..."), 7_000));
     try {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/upload-csv", { method: "POST", body: formData });
-      clearTimeout(t1); clearTimeout(t2);
+      clearTimers();
       const data = await res.json() as { inserted?: number; error?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setCsvStatus(`Done — ${data.inserted ?? 0} tickets ingested.`);
       await fetchClusters(true);
-      setTimeout(() => { setShowCsvModal(false); setCsvStatus(null); }, 2_200);
+      // Track the close timer so it can be cancelled if the modal unmounts first
+      timers.push(setTimeout(() => { setShowCsvModal(false); setCsvStatus(null); }, 2_200));
     } catch (err) {
-      clearTimeout(t1); clearTimeout(t2);
+      clearTimers();
       setCsvError(err instanceof Error ? err.message : "Upload failed");
       setCsvStatus(null);
     }
