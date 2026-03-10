@@ -8,6 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { execFile } from "child_process";
+import { timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { resolve, join } from "path";
 
@@ -28,7 +29,11 @@ export async function POST(request: Request) {
   const syncSecret = process.env.SYNC_SECRET;
   if (syncSecret) {
     const provided = request.headers.get("x-sync-secret");
-    if (provided !== syncSecret) {
+    if (
+      !provided ||
+      Buffer.byteLength(provided) !== Buffer.byteLength(syncSecret) ||
+      !timingSafeEqual(Buffer.from(provided), Buffer.from(syncSecret))
+    ) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }

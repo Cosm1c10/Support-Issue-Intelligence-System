@@ -27,6 +27,12 @@
  */
 
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
+
+function safeCompare(a: string, b: string): boolean {
+  if (Buffer.byteLength(a) !== Buffer.byteLength(b)) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY!;
@@ -95,7 +101,7 @@ export async function POST(request: Request) {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (webhookSecret) {
     const provided = request.headers.get("x-webhook-secret");
-    if (provided !== webhookSecret) {
+    if (!provided || !safeCompare(provided, webhookSecret)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }

@@ -642,6 +642,8 @@ def name_cluster(ticket_subjects: list[str]) -> tuple[str, str]:
     try:
         raw_content = (response.choices[0].message.content or "").strip()
         data = json.loads(raw_content)
+        if not isinstance(data, dict):
+            raise ValueError("Expected JSON object, got: " + type(data).__name__)
     except (json.JSONDecodeError, ValueError, AttributeError, IndexError) as exc:
         raise RuntimeError(f"GPT returned non-JSON response: {exc}") from exc
     name = data.get("name") or "Unnamed Cluster"

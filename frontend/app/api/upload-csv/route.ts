@@ -91,20 +91,10 @@ export async function POST(request: Request) {
     // Log full details server-side only — never expose internal paths or stack traces
     console.error("[/api/upload-csv]", message, "\nSTDERR:", stderr);
 
-    // Extract a safe user-facing line: skip tracebacks, file paths, and frame lines
-    const safeError =
-      stderr
-        .split("\n")
-        .filter(
-          (l) =>
-            l.trim() &&
-            !l.startsWith("WARNING") &&
-            !l.startsWith("Traceback") &&
-            !l.match(/^\s*(File |at )/)
-        )
-        .pop() ?? "CSV processing failed. Please check your file format and try again.";
-
-    return NextResponse.json({ error: safeError }, { status: 500 });
+    return NextResponse.json(
+      { error: "CSV processing failed. Please check your file format and try again." },
+      { status: 500 }
+    );
   } finally {
     // Always clean up the temp file
     if (tempPath) {
