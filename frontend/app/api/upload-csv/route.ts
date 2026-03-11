@@ -77,7 +77,18 @@ function parseCSV(text: string): Record<string, string>[] {
     return fields;
   };
 
-  const headers = splitRow(lines[0]).map((h) => h.toLowerCase().replace(/^"|"$/g, ""));
+  // Normalise column names to canonical field names
+  const ALIASES: Record<string, string> = {
+    "ticket subject": "subject",
+    "ticket description": "description",
+    "date of purchase": "date",
+    "ticket priority": "priority",
+    "ticket type": "ticket_type",
+    "product purchased": "product_area",
+    "product area": "product_area",
+  };
+  const rawHeaders = splitRow(lines[0]).map((h) => h.toLowerCase().replace(/^"|"$/g, ""));
+  const headers = rawHeaders.map((h) => ALIASES[h] ?? h);
   const rows: Record<string, string>[] = [];
 
   for (let i = 1; i < lines.length; i++) {
