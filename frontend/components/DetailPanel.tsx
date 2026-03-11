@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { X, Clock, Zap } from "lucide-react";
+import { X, Clock } from "lucide-react";
 import { T, PRIORITY } from "./tokens";
 import { pctChange, timeAgo } from "./utils";
 import { TrendPill, PriorityDot } from "./TrendPill";
@@ -42,12 +42,13 @@ export function DetailPanel({ cluster, onClose, onDraftAlert }: DetailPanelProps
       {/* Panel */}
       <div
         style={{
-          position: "fixed", top: 0, right: 0, bottom: 0,
-          width: "min(580px, 100vw)",
-          background: "var(--s1)", borderLeft: "1px solid var(--b1)",
+          position: "fixed", top: "50%", left: "50%",
+          width: "min(640px, 92vw)", maxHeight: "88vh",
+          background: "var(--s1)", border: "1px solid var(--b2)",
+          borderRadius: 20,
           zIndex: 50, display: "flex", flexDirection: "column",
-          animation: "slide-panel 0.34s var(--smooth) forwards",
-          boxShadow: "-20px 0 80px rgba(0,0,0,0.9)",
+          animation: "modal-in 0.30s var(--smooth) forwards",
+          boxShadow: "0 32px 100px rgba(0,0,0,0.85), 0 0 0 1px rgba(196,181,253,0.07)",
         }}
       >
         {/* Top accent line */}
@@ -95,7 +96,6 @@ export function DetailPanel({ cluster, onClose, onDraftAlert }: DetailPanelProps
                   b.style.borderColor = "rgba(139,92,246,0.26)";
                 }}
               >
-                <Zap size={11} strokeWidth={2.5} />
                 Draft QA Alert
               </button>
             )}
@@ -117,7 +117,7 @@ export function DetailPanel({ cluster, onClose, onDraftAlert }: DetailPanelProps
         </div>
 
         {/* Scrollable body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "24px 20px 48px" }}>
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "24px 20px 48px" }}>
           {/* Title */}
           <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.035em", color: "var(--t1)", lineHeight: 1.2, marginBottom: 10 }}>
             {cluster.name}

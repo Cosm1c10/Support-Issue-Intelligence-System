@@ -24,6 +24,12 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Chart component tokens */
+  --color-overlay:    var(--s3);
+  --color-overlay-fg: var(--t1);
+  --color-muted-fg:   var(--t3);
+  --color-fg:         var(--t1);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -118,6 +124,14 @@
   --green:  #22C55E;
   --red:    #F43F5E;
   --orange: #F97316;
+
+  /* Chart palette — synced to kreo brand */
+  --chart-1: #8B5CF6;   /* kreo-mid purple */
+  --chart-2: #A78BFA;   /* kreo-bright lavender */
+  --chart-3: #06B6D4;   /* cyan accent */
+  --chart-4: #22C55E;   /* green */
+  --chart-5: #F97316;   /* orange */
+  --chart-6: #3B82F6;   /* blue */
 
   /* Easings */
   --smooth: cubic-bezier(0.16, 1, 0.30, 1);

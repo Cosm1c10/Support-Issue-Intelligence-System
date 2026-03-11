@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import {
-  Activity, RefreshCw, Search, X, Clock, AlertCircle,
-  TrendingUp, TrendingDown, BarChart2, Upload, Database, Globe,
+  RefreshCw, Search, X, AlertCircle, Activity,
+  TrendingUp, TrendingDown, BarChart2, Upload,
 } from "lucide-react";
 
 import { MetricCard } from "../components/MetricCard";
@@ -12,10 +12,44 @@ import { DetailPanel } from "../components/DetailPanel";
 import { QaAlertModal } from "../components/QaAlertModal";
 import { CsvUploadModal } from "../components/CsvUploadModal";
 import { SkeletonCard } from "../components/SkeletonCard";
-import { timeAgo } from "../components/utils";
-import type { Cluster, TrendFilter, Space } from "../components/types";
+import { ClusterTrendsChart } from "../components/ClusterTrendsChart";
+import { ClusterPieChart } from "../components/ClusterPieChart";
+import type { Cluster, TrendFilter } from "../components/types";
 
 /* ── Constants ─────────────────────────────────────────────── */
+
+const SELECT_STYLE: CSSProperties = {
+  background: "var(--s3)",
+  border: "1px solid var(--b1)",
+  borderRadius: 8,
+  color: "var(--t2)",
+  fontSize: 12,
+  fontFamily: "inherit",
+  fontWeight: 500,
+  padding: "5px 28px 5px 10px",
+  cursor: "pointer",
+  outline: "none",
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  colorScheme: "dark",
+  backgroundImage:
+    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E\")",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 8px center",
+};
+
+const MONTH_OPTIONS = (() => {
+  const opts: { value: string; label: string }[] = [{ value: "all", label: "All Time" }];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    opts.push({ value, label });
+  }
+  return opts;
+})();
 
 const TABS: { id: TrendFilter; label: string }[] = [
   { id: "all",        label: "All"        },
@@ -35,7 +69,6 @@ export default function Home() {
   const [selected, setSelected]       = useState<Cluster | null>(null);
   const [filter, setFilter]           = useState<TrendFilter>("all");
   const [search, setSearch]           = useState("");
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing]   = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -45,12 +78,8 @@ export default function Home() {
   const [qaLoading, setQaLoading] = useState(false);
   const [qaIsMock, setQaIsMock]   = useState(false);
 
-  /* Spaces */
-  const [space, setSpace] = useState<Space>("support");
-
-  /* Marketplace sync */
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  /* Month filter */
+  const [selectedMonth, setSelectedMonth] = useState("all");
 
   /* CSV upload */
   const [showCsvModal, setShowCsvModal] = useState(false);
@@ -62,11 +91,12 @@ export default function Home() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch(`/api/clusters?source=${space}`);
+      const params = new URLSearchParams();
+      if (selectedMonth !== "all") params.set("month", selectedMonth);
+      const res = await fetch(`/api/clusters?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setClusters(data.clusters ?? []);
-      setLastUpdated(new Date());
       setError(null);
     } catch {
       setError("Cannot reach Supabase — check env vars and network connection.");
@@ -74,7 +104,7 @@ export default function Home() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [space]);
+  }, [selectedMonth]);
 
   useEffect(() => {
     fetchClusters();
@@ -113,26 +143,8 @@ export default function Home() {
     }
   }, []);
 
-  /* ── Sync Marketplace ───────────────────────────────────── */
-  const handleSync = useCallback(async () => {
-    setIsSyncing(true);
-    setSyncError(null);
-    try {
-      const res = await fetch("/api/sync-marketplaces", { method: "POST" });
-      if (!res.ok) {
-        const d = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(d.error ?? `HTTP ${res.status}`);
-      }
-      await fetchClusters(true);
-    } catch (err) {
-      setSyncError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [fetchClusters]);
-
   /* ── CSV Upload ─────────────────────────────────────────── */
-  const handleCsvUpload = useCallback(async (file: File) => {
+  const handleCsvUpload = useCallback(async (file: File, month: string) => {
     setCsvStatus("Uploading file...");
     setCsvError(null);
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -142,10 +154,14 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (month && month !== "all") formData.append("month", month);
       const res = await fetch("/api/upload-csv", { method: "POST", body: formData });
       clearTimers();
-      const data = (await res.json()) as { inserted?: number; error?: string };
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      const data = (await res.json()) as { inserted?: number; error?: string; detail?: string };
+      if (!res.ok) {
+        const msg = data.error ?? `HTTP ${res.status}`;
+        throw new Error(data.detail ? `${msg}\n\n${data.detail}` : msg);
+      }
       setCsvStatus(`Done — ${data.inserted ?? 0} tickets ingested.`);
       await fetchClusters(true);
       timers.push(setTimeout(() => { setShowCsvModal(false); setCsvStatus(null); }, 2_200));
@@ -181,23 +197,14 @@ export default function Home() {
       {/* ── Navigation ── */}
       <nav style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(8,8,15,0.88)", backdropFilter: "blur(32px)", WebkitBackdropFilter: "blur(32px)", borderBottom: "1px solid var(--b1)" }}>
         <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 28px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 9, background: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 0 16px rgba(124,58,237,0.50), 0 0 0 1px rgba(196,181,253,0.15)" }}>
-              <Activity size={14} color="#fff" strokeWidth={2.5} />
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: "var(--kreo-soft)", letterSpacing: "-0.04em" }}>kreo.</span>
-              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t3)", letterSpacing: "-0.01em" }}>Support Intelligence</span>
-            </div>
+          {/* Branding — centered via absolute positioning trick */}
+          <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "baseline", gap: 6, pointerEvents: "none" }}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: "var(--kreo-soft)", letterSpacing: "-0.04em" }}>kreo.</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t3)", letterSpacing: "-0.01em" }}>Support Intelligence</span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {lastUpdated && (
-              <span style={{ fontSize: 11.5, color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, fontWeight: 500 }}>
-                <Clock size={10} color="var(--t4)" />
-                {timeAgo(lastUpdated.toISOString())}
-              </span>
-            )}
+          {/* Right actions */}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
             <button
               onClick={() => { setShowCsvModal(true); setCsvStatus(null); setCsvError(null); }}
               style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", background: "rgba(124,58,237,0.10)", border: "1px solid rgba(139,92,246,0.28)", borderRadius: 8, color: "var(--kreo-soft)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.14s", letterSpacing: "-0.01em" }}
@@ -216,10 +223,6 @@ export default function Home() {
               <RefreshCw size={11} className={refreshing ? "spin" : ""} style={{ transition: "none" }} />
               Refresh
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 9px", background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.18)", borderRadius: 100 }}>
-              <div className="live-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)", flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: "#22C55E", fontWeight: 600, letterSpacing: "0.02em" }}>Live</span>
-            </div>
           </div>
         </div>
       </nav>
@@ -228,7 +231,7 @@ export default function Home() {
       <main style={{ maxWidth: 1240, margin: "0 auto", padding: "0 28px 100px", position: "relative", zIndex: 1 }}>
 
         {/* Hero */}
-        <div style={{ padding: "56px 0 42px" }}>
+        <div style={{ padding: "56px 0 42px", textAlign: "center" }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px", background: "rgba(196,181,253,0.07)", border: "1px solid rgba(196,181,253,0.18)", borderRadius: 100, fontSize: 10.5, fontWeight: 700, color: "var(--kreo-soft)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 24, opacity: 0, animation: "fade-up 0.45s var(--smooth) 0s forwards" }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--kreo-soft)", boxShadow: "0 0 8px var(--kreo-soft)" }} />
             AI · Semantic Clustering · Trend Detection · Agentic Actions
@@ -237,23 +240,25 @@ export default function Home() {
             Issue Intelligence
             <span style={{ display: "block", background: "linear-gradient(90deg, var(--t3) 0%, var(--t4) 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Dashboard</span>
           </h1>
-          <p style={{ fontSize: 15, color: "var(--t3)", maxWidth: 500, lineHeight: 1.68, fontWeight: 400, opacity: 0, animation: "fade-up 0.52s var(--smooth) 0.14s forwards" }}>
+          <p style={{ fontSize: 15, color: "var(--t3)", maxWidth: 500, lineHeight: 1.68, fontWeight: 400, opacity: 0, animation: "fade-up 0.52s var(--smooth) 0.14s forwards", margin: "0 auto" }}>
             Support tickets automatically clustered by semantic similarity. Trends detected across rolling 30-day windows. AI root cause analysis and QA alerts on demand.
           </p>
         </div>
 
-        {/* Spaces Toggle */}
-        <div style={{ display: "inline-flex", gap: 0, background: "var(--s2)", border: "1px solid var(--b1)", borderRadius: 10, padding: 3, marginBottom: 32, opacity: 0, animation: "fade-up 0.45s var(--smooth) 0.20s forwards" }}>
-          {([ ["support", "Internal Support", Database], ["marketplace", "Marketplaces", Globe] ] as const).map(([id, label, Icon]) => {
-            const active = space === id;
-            return (
-              <button key={id} onClick={() => { setSpace(id); setFilter("all"); setSearch(""); }}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 16px", borderRadius: 7, fontSize: 12.5, fontWeight: active ? 700 : 500, border: "none", cursor: "pointer", transition: "background 0.14s, color 0.14s", background: active ? "var(--s4)" : "transparent", color: active ? "var(--t1)" : "var(--t3)", fontFamily: "inherit", letterSpacing: active ? "-0.02em" : "0", boxShadow: active ? "0 0 0 1px var(--b2)" : "none" }}
-              >
-                <Icon size={12} />{label}
-              </button>
-            );
-          })}
+        {/* Month Filter */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32, flexWrap: "wrap", opacity: 0, animation: "fade-up 0.45s var(--smooth) 0.20s forwards" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11.5, color: "var(--t4)", fontWeight: 500, whiteSpace: "nowrap" }}>Timeframe</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => { setSelectedMonth(e.target.value); setFilter("all"); }}
+              style={SELECT_STYLE}
+            >
+              {MONTH_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Metrics */}
@@ -263,6 +268,16 @@ export default function Home() {
             <MetricCard label="Clusters"      value={clusters.length} sub="semantic groups"   icon={Activity}    delay={0.22} />
             <MetricCard label="Increasing"    value={increasing}  sub="requires attention" accent="var(--kreo)"      icon={TrendingUp}  delay={0.26} />
             <MetricCard label="Decreasing"    value={decreasing}  sub="trending down"      accent="var(--trend-dn)"  icon={TrendingDown} delay={0.30} />
+          </div>
+        )}
+
+        {/* Charts row */}
+        {!loading && clusters.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 16, marginBottom: 32, alignItems: "stretch" }}>
+            <ClusterTrendsChart clusters={clusters} />
+            <div style={{ width: 300, flexShrink: 0 }}>
+              <ClusterPieChart clusters={clusters} />
+            </div>
           </div>
         )}
 
@@ -294,21 +309,6 @@ export default function Home() {
             {filtered.length} cluster{filtered.length !== 1 ? "s" : ""}
           </span>
         </div>
-
-        {/* Marketplace Sync Bar */}
-        {space === "marketplace" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "rgba(124,58,237,0.06)", border: "1px solid rgba(139,92,246,0.18)", borderRadius: 10, marginBottom: 20, opacity: 0, animation: "fade-up 0.35s var(--smooth) 0s forwards" }}>
-            <Globe size={13} color="var(--kreo-soft)" style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: 12.5, color: "var(--t3)", flex: 1, fontWeight: 500 }}>Showing Amazon review tickets ingested via Apify.</span>
-            {syncError && <span style={{ fontSize: 11.5, color: "var(--red)", fontWeight: 500 }}>{syncError}</span>}
-            <button onClick={handleSync} disabled={isSyncing}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", background: isSyncing ? "var(--s3)" : "var(--kreo)", border: "1px solid rgba(139,92,246,0.35)", borderRadius: 8, color: isSyncing ? "var(--t3)" : "#fff", fontSize: 12, fontWeight: 700, cursor: isSyncing ? "default" : "pointer", fontFamily: "inherit", letterSpacing: "-0.01em", transition: "all 0.14s", opacity: isSyncing ? 0.7 : 1, whiteSpace: "nowrap" }}
-            >
-              <RefreshCw size={11} className={isSyncing ? "spin" : ""} style={{ transition: "none" }} />
-              {isSyncing ? "Scraping marketplace data..." : "[ Sync Marketplaces Data ]"}
-            </button>
-          </div>
-        )}
 
         {/* Error */}
         {error && (
