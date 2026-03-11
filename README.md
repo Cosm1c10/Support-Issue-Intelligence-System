@@ -1,6 +1,6 @@
 # Support Issue Intelligence System
 
-A full-stack dashboard that clusters support tickets by semantic similarity, detects trends, and surfaces AI-powered insights — deployable entirely on Vercel with no Python runtime required.
+A full-stack dashboard that clusters support tickets by semantic similarity, detects trends, and surfaces AI-powered insights. Deployable entirely on Vercel with no Python runtime required.
 
 ---
 
@@ -46,7 +46,7 @@ A full-stack dashboard that clusters support tickets by semantic similarity, det
 |-------|-----------|-------|
 | Database | Supabase (PostgreSQL + pgvector) | HNSW index on `embedding vector(1536)` |
 | Embeddings | OpenAI `text-embedding-3-small` | 1536 dims, batched 100 at a time |
-| Clustering | K-Means++ in JavaScript | Pure Node.js, runs on Vercel — no Python needed |
+| Clustering | K-Means++ in JavaScript | Pure Node.js, runs on Vercel (no Python needed) |
 | Cluster naming | GPT-4o-mini | Parallel calls, JSON response format |
 | AI summaries / alerts | GPT-4o-mini | Root-cause analysis + QA escalation email |
 | Frontend | Next.js 15 App Router + Tailwind CSS | |
@@ -123,7 +123,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `SUPABASE_SERVICE_KEY` | Supabase → Settings → API → `service_role` key |
 | `OPENAI_API_KEY` | platform.openai.com → API keys |
 
-5. Deploy. Everything — including CSV upload and K-Means re-clustering — works on Vercel.
+5. Deploy. Everything works on Vercel, including CSV upload and K-Means re-clustering.
 
 > **Note:** `POST /api/recluster` still requires a Python backend (it spawns `add_tickets.py`). It returns `503` on Vercel. All other routes are fully serverless.
 
@@ -231,7 +231,7 @@ otherwise           →  "Stable"
 
 | Path | When | How |
 |------|------|-----|
-| **Webhook** (real-time) | Single new ticket | Cosine similarity to existing centroids — O(k) |
+| **Webhook** (real-time) | Single new ticket | Cosine similarity to existing centroids, O(k) |
 | **CSV upload** (batch) | Any batch import | Full K-Means re-cluster on all tickets in DB |
 
 ---
@@ -261,8 +261,8 @@ job_runs         (id UUID PK, job_type TEXT, status TEXT,
 ```
 
 **RPC functions:**
-- `find_similar_tickets(embedding, threshold, count)` — cosine similarity search via HNSW
-- `get_clusters_with_tickets()` — clusters with all member tickets as JSONB
+- `find_similar_tickets(embedding, threshold, count)`: cosine similarity search via HNSW
+- `get_clusters_with_tickets()`: clusters with all member tickets as JSONB
 
 ---
 
@@ -327,11 +327,11 @@ K-Means on embeddings approximates spherical clustering, which works well for se
 
 **What I'd do differently with more time:**
 
-- **Replace K-Means with HDBSCAN.** K-Means forces every ticket into a cluster and requires specifying k upfront. HDBSCAN discovers cluster count automatically and handles outlier tickets gracefully — better for real support queues where issues appear and disappear unpredictably.
+- **Replace K-Means with HDBSCAN.** K-Means forces every ticket into a cluster and requires specifying k upfront. HDBSCAN discovers cluster count automatically and handles outlier tickets gracefully, which suits real support queues where issues appear and disappear unpredictably.
 
 - **Finer trend thresholds per cluster.** The current ±25% threshold is global. High-volume clusters need a larger absolute change to be meaningful; low-volume clusters are too sensitive. Per-cluster baselines with statistical significance testing (z-score on a rolling window) would reduce false trend alerts.
 
-- **Incremental re-clustering.** Every CSV upload today triggers a full K-Means pass over all tickets. With thousands of tickets this becomes slow. An incremental approach — assign new tickets to the nearest centroid first, only re-cluster when centroid drift exceeds a threshold — would keep uploads fast regardless of DB size.
+- **Incremental re-clustering.** Every CSV upload today triggers a full K-Means pass over all tickets. With thousands of tickets this becomes slow. An incremental approach (assign new tickets to the nearest centroid first, only re-cluster when centroid drift exceeds a threshold) would keep uploads fast regardless of DB size.
 
 - **Persist cluster identity across re-clusters.** Each re-cluster wipes and rebuilds all clusters, so cluster UUIDs change. This breaks external references (saved links, alerts). Matching new clusters to old ones by centroid cosine similarity and preserving IDs would give stable cluster identities over time.
 
