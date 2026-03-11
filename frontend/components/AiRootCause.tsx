@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Sparkles, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import type { Cluster } from "./types";
 
 export function AiRootCause({ cluster }: { cluster: Cluster }) {
@@ -46,9 +46,6 @@ export function AiRootCause({ cluster }: { cluster: Cluster }) {
       >
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
             fontSize: 11,
             fontWeight: 700,
             color: "var(--kreo-bright)",
@@ -56,7 +53,6 @@ export function AiRootCause({ cluster }: { cluster: Cluster }) {
             textTransform: "uppercase",
           }}
         >
-          <Sparkles size={11} strokeWidth={2} />
           AI Root Cause Analysis
         </div>
 
@@ -90,7 +86,6 @@ export function AiRootCause({ cluster }: { cluster: Cluster }) {
               b.style.borderColor = "rgba(139,92,246,0.28)";
             }}
           >
-            <Sparkles size={10} />
             Generate
           </button>
         )}
@@ -142,7 +137,7 @@ export function AiRootCause({ cluster }: { cluster: Cluster }) {
             }}
           />
           <span style={{ fontSize: 13, color: "var(--kreo-bright)", fontWeight: 500 }}>
-            Analysing ticket patterns…
+            Analyzing ticket patterns...
           </span>
         </div>
       )}
@@ -170,12 +165,8 @@ export function AiRootCause({ cluster }: { cluster: Cluster }) {
                 borderTop: "1px solid rgba(139,92,246,0.12)",
                 fontSize: 11,
                 color: "rgba(167,139,250,0.45)",
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
               }}
             >
-              <Sparkles size={9} />
               Demo mode — add OPENAI_API_KEY for live analysis
             </div>
           )}
@@ -192,11 +183,6 @@ export function AiRootCause({ cluster }: { cluster: Cluster }) {
             textAlign: "center",
           }}
         >
-          <Sparkles
-            size={18}
-            color="rgba(139,92,246,0.30)"
-            style={{ margin: "0 auto 8px", display: "block" }}
-          />
           <div style={{ fontSize: 12.5, color: "var(--t4)", lineHeight: 1.55 }}>
             Click{" "}
             <strong style={{ color: "var(--kreo-bright)", fontWeight: 600 }}>Generate</strong>{" "}

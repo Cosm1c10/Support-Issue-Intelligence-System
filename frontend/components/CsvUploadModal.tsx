@@ -1,17 +1,59 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, type CSSProperties } from "react";
 import { X, Upload, AlertCircle, RefreshCw } from "lucide-react";
 
 interface CsvUploadModalProps {
-  onUpload: (file: File) => void;
+  onUpload: (file: File, month: string) => void;
   onClose: () => void;
   status: string | null;
   error: string | null;
 }
 
+const SELECT_STYLE: CSSProperties = {
+  background: "var(--s3)",
+  border: "1px solid var(--b1)",
+  borderRadius: 8,
+  color: "var(--t2)",
+  fontSize: 12,
+  fontFamily: "inherit",
+  fontWeight: 500,
+  padding: "5px 28px 5px 10px",
+  cursor: "pointer",
+  outline: "none",
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  colorScheme: "dark",
+  backgroundImage:
+    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E\")",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 8px center",
+  width: "100%",
+};
+
+function getMonthOptions(): { value: string; label: string }[] {
+  const opts: { value: string; label: string }[] = [{ value: "all", label: "All Time" }];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    opts.push({ value, label });
+  }
+  return opts;
+}
+
+const MONTH_OPTIONS = getMonthOptions();
+
+function getCurrentMonthValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function CsvUploadModal({ onUpload, onClose, status, error }: CsvUploadModalProps) {
   const [dragOver, setDragOver] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
   const inputRef = useRef<HTMLInputElement>(null);
   const isProcessing = !!status && !status.startsWith("Done");
 
@@ -19,12 +61,12 @@ export function CsvUploadModal({ onUpload, onClose, status, error }: CsvUploadMo
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) onUpload(file);
+    if (file) onUpload(file, selectedMonth);
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (file) onUpload(file);
+    if (file) onUpload(file, selectedMonth);
   }
 
   return (
@@ -71,6 +113,24 @@ export function CsvUploadModal({ onUpload, onClose, status, error }: CsvUploadMo
           )}
         </div>
 
+        {/* Target Month selector */}
+        {!status && !error && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--t4)", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 6 }}>
+              Target Month
+            </label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              style={SELECT_STYLE}
+            >
+              {MONTH_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Drag-and-drop zone */}
         {!status && !error && (
           <div
@@ -113,7 +173,7 @@ export function CsvUploadModal({ onUpload, onClose, status, error }: CsvUploadMo
               {status}
             </div>
             {isProcessing && (
-              <div style={{ fontSize: 11.5, color: "var(--t4)", marginTop: 6 }}>This may take a minute for large files</div>
+              <div style={{ fontSize: 11.5, color: "var(--t4)", marginTop: 6 }}>Embedding tickets and re-clustering — may take 1-2 minutes</div>
             )}
           </div>
         )}
@@ -122,7 +182,7 @@ export function CsvUploadModal({ onUpload, onClose, status, error }: CsvUploadMo
         {error && (
           <div style={{ padding: "12px 16px", background: "rgba(244,63,94,0.07)", border: "1px solid rgba(244,63,94,0.22)", borderRadius: 10, marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 8 }}>
             <AlertCircle size={14} color="var(--red)" style={{ flexShrink: 0, marginTop: 1 }} />
-            <div style={{ fontSize: 12.5, color: "var(--red)", lineHeight: 1.5 }}>{error}</div>
+            <div style={{ fontSize: 12.5, color: "var(--red)", lineHeight: 1.5, whiteSpace: "pre-wrap", fontFamily: "monospace" }}>{error}</div>
           </div>
         )}
 

@@ -4,10 +4,37 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
+// ── Helpers ──────────────────────────────────────────────────
+
+function getMonthRange(month: string): { start: string; end: string } {
+  const [y, m] = month.split("-").map(Number);
+  const start = `${month}-01T00:00:00.000Z`;
+  const nextDate = new Date(Date.UTC(y, m, 1));
+  const end = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, "0")}-01T00:00:00.000Z`;
+  return { start, end };
+}
+
+function getPrevMonth(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 2, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function calcTrend(curr: number, prev: number): "Increasing" | "Decreasing" | "Stable" {
+  if (prev === 0) return curr > 0 ? "Increasing" : "Stable";
+  if (curr > prev * 1.25) return "Increasing";
+  if (curr < prev * 0.75) return "Decreasing";
+  return "Stable";
+}
+
+// ── Route ────────────────────────────────────────────────────
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const source = searchParams.get("source"); // 'support' | 'marketplace' | null
+    const month = searchParams.get("month"); // 'YYYY-MM' | 'all' | null
+
+    const filterByMonth = !!(month && month !== "all");
 
     // ── Fetch all clusters via existing RPC ─────────────────────
     const rpcRes = await fetch(
@@ -20,7 +47,7 @@ export async function GET(request: Request) {
           Authorization: `Bearer ${SUPABASE_KEY}`,
         },
         body: "{}",
-        next: { revalidate: 30 },
+        cache: "no-store",
       }
     );
 
@@ -32,72 +59,101 @@ export async function GET(request: Request) {
       );
     }
 
-    const allClusters = await rpcRes.json();
+    type ExampleTicket = { id: string; created_at?: string };
+    type RawCluster = Record<string, unknown> & {
+      id: string;
+      example_tickets?: ExampleTicket[];
+    };
+    const allClusters = (await rpcRes.json()) as RawCluster[];
 
-    // ── No source filter → return everything ────────────────────
-    if (!source || source === "all") {
+    // Sort each cluster's example_tickets newest-first so freshly uploaded
+    // tickets surface immediately on the cards (RPC orders by similarity_score
+    // which gives seed data higher priority).
+    for (const c of allClusters) {
+      if (Array.isArray(c.example_tickets)) {
+        c.example_tickets.sort((a, b) =>
+          new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+        );
+      }
+    }
+
+    // Fast path: no month filter — return stored cluster data as-is
+    if (!filterByMonth) {
       return NextResponse.json(
         { clusters: allClusters, timestamp: new Date().toISOString() },
-        { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } }
+        { headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    // ── Filter clusters by source of their member tickets ───────
-    // Uses @supabase/supabase-js which handles large IN lists via POST body
+    // ── Month filter: recalculate trends dynamically ─────────────
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Get ticket IDs matching the requested source
-    let ticketQuery = supabase.from("tickets").select("id");
-    if (source === "marketplace") {
-      ticketQuery = ticketQuery.eq("source", "amazon");
-    } else {
-      // support: source is null (pre-migration rows), manual, webhook, csv, or 'support'
-      ticketQuery = ticketQuery.or(
-        "source.is.null,source.eq.manual,source.eq.webhook,source.eq.support,source.eq.csv"
-      );
+    const currRange = getMonthRange(month!);
+    const prevRange = getMonthRange(getPrevMonth(month!));
+
+    async function fetchTicketIds(dateRange: { start: string; end: string }): Promise<string[]> {
+      const { data, error } = await supabase
+        .from("tickets")
+        .select("id")
+        .gte("created_at", dateRange.start)
+        .lt("created_at", dateRange.end);
+      if (error) {
+        console.error("[/api/clusters] fetchTicketIds error:", error);
+        return [];
+      }
+      return (data ?? []).map((t) => t.id);
     }
 
-    const { data: tickets, error: ticketErr } = await ticketQuery;
-    if (ticketErr) {
-      console.error("[/api/clusters] ticket query error:", ticketErr);
-      return NextResponse.json(
-        { error: "Failed to filter by source" },
-        { status: 502 }
-      );
+    async function countPerCluster(ticketIds: string[]): Promise<Record<string, number>> {
+      if (ticketIds.length === 0) return {};
+      const { data, error } = await supabase
+        .from("cluster_members")
+        .select("cluster_id")
+        .in("ticket_id", ticketIds);
+      if (error) {
+        console.error("[/api/clusters] countPerCluster error:", error);
+        return {};
+      }
+      const counts: Record<string, number> = {};
+      for (const m of data ?? []) {
+        counts[m.cluster_id] = (counts[m.cluster_id] || 0) + 1;
+      }
+      return counts;
     }
 
-    const ticketIds = (tickets ?? []).map((t) => t.id);
+    const [currTicketIds, prevTicketIds] = await Promise.all([
+      fetchTicketIds(currRange),
+      fetchTicketIds(prevRange),
+    ]);
 
-    if (ticketIds.length === 0) {
-      return NextResponse.json(
-        { clusters: [], timestamp: new Date().toISOString() },
-        { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } }
-      );
-    }
+    const [currCounts, prevCounts] = await Promise.all([
+      countPerCluster(currTicketIds),
+      countPerCluster(prevTicketIds),
+    ]);
 
-    // Get the cluster IDs those tickets belong to
-    const { data: members, error: memberErr } = await supabase
-      .from("cluster_members")
-      .select("cluster_id")
-      .in("ticket_id", ticketIds);
+    const currTicketIdSet = new Set(currTicketIds);
 
-    if (memberErr) {
-      console.error("[/api/clusters] member query error:", memberErr);
-      return NextResponse.json(
-        { error: "Failed to fetch cluster memberships" },
-        { status: 502 }
-      );
-    }
-
-    const clusterIdSet = new Set((members ?? []).map((m) => m.cluster_id));
-
-    const filtered = (allClusters as { id: string }[]).filter((c) =>
-      clusterIdSet.has(c.id)
-    );
+    const result = allClusters
+      .filter((c) => (currCounts[c.id] || 0) > 0)
+      .map((c) => {
+        const curr = currCounts[c.id] || 0;
+        const prev = prevCounts[c.id] || 0;
+        const filteredExamples = (c.example_tickets ?? []).filter((t) =>
+          currTicketIdSet.has(t.id)
+        );
+        return {
+          ...c,
+          ticket_count:      curr,
+          prev_window_count: prev,
+          curr_window_count: curr,
+          trend:             calcTrend(curr, prev),
+          example_tickets:   filteredExamples,
+        };
+      });
 
     return NextResponse.json(
-      { clusters: filtered, timestamp: new Date().toISOString() },
-      { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } }
+      { clusters: result, timestamp: new Date().toISOString() },
+      { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
     console.error("[/api/clusters]", err);

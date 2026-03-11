@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Zap } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { T } from "./tokens";
 import { pctChange } from "./utils";
 import { TrendPill, PriorityDot } from "./TrendPill";
@@ -186,7 +186,6 @@ export function ClusterCard({ cluster, onClick, delay, onDraftAlert }: ClusterCa
               b.style.boxShadow = "none";
             }}
           >
-            <Zap size={11} strokeWidth={2.5} />
             Draft QA Alert
           </button>
         </div>

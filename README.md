@@ -12,7 +12,6 @@ Browser (Next.js App Router)
   ├── GET  /api/clusters            ← Supabase RPC → cluster grid
   ├── POST /api/webhooks/incoming-ticket  ← embed → assign → insert
   ├── POST /api/upload-csv          ← spawns process_csv.py
-  ├── POST /api/sync-marketplaces   ← spawns sync_amazon.py (Apify)
   ├── POST /api/recluster           ← spawns add_tickets.py (K-Means)
   ├── POST /api/generate-summary    ← GPT-4o-mini root cause
   ├── POST /api/draft-qa-alert      ← GPT-4o-mini alert email
@@ -37,8 +36,7 @@ Browser (Next.js App Router)
 | Embeddings | OpenAI text-embedding-3-small (1536 dims) |
 | Clustering | scikit-learn K-Means (k=7, L2-normalised) |
 | Cluster naming | GPT-4o-mini |
-| Marketplace data | Apify `junglee/amazon-reviews-scraper` |
-| Frontend | Next.js 16 App Router + Tailwind CSS |
+| Frontend | Next.js 15 App Router + Tailwind CSS |
 | UI | shadcn/ui, Lucide icons |
 | Real-time | Supabase Realtime (WebSocket) |
 
@@ -72,7 +70,6 @@ cp backend/.env.example backend/.env
 # SUPABASE_URL=https://<project>.supabase.co
 # SUPABASE_SERVICE_KEY=<service_role_key>
 # OPENAI_API_KEY=sk-...
-# APIFY_API_TOKEN=apify_api_...  (optional — needed for Amazon sync)
 ```
 
 ### 4. Seed the database
@@ -110,7 +107,6 @@ Open [http://localhost:3000](http://localhost:3000).
 | `SUPABASE_URL` | Yes | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Yes | Service role key (bypasses RLS) |
 | `OPENAI_API_KEY` | Yes | Used for embeddings + GPT summaries |
-| `APIFY_API_TOKEN` | No | Required for Amazon review sync |
 | `WEBHOOK_SECRET` | No | Shared secret for webhook endpoint |
 | `SYNC_SECRET` | No | Shared secret for sync + recluster endpoints |
 | `BACKEND_DIR` | No | Path to backend dir (default: `../backend`) |
@@ -145,14 +141,6 @@ curl -X POST http://localhost:3000/api/upload-csv \
 
 CSV columns: `subject, description, date, priority, ticket_type, product_area`
 
-### Amazon Reviews (Apify)
-
-```bash
-curl -X POST http://localhost:3000/api/sync-marketplaces
-```
-
-Or trigger from the Marketplaces tab in the dashboard.
-
 ### Re-clustering (on-demand)
 
 ```bash
@@ -166,10 +154,9 @@ curl -X POST http://localhost:3000/api/recluster \
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/clusters?source=support\|marketplace\|all` | Fetch all clusters |
+| `GET` | `/api/clusters?month=YYYY-MM\|all` | Fetch clusters (optional month filter) |
 | `POST` | `/api/webhooks/incoming-ticket` | Ingest single ticket via webhook |
 | `POST` | `/api/upload-csv` | Batch ingest from CSV |
-| `POST` | `/api/sync-marketplaces` | Pull Amazon reviews via Apify |
 | `POST` | `/api/recluster` | Trigger full K-Means re-cluster |
 | `POST` | `/api/generate-summary` | AI root cause summary for a cluster |
 | `POST` | `/api/draft-qa-alert` | Draft QA escalation email |
@@ -206,7 +193,7 @@ frontend/
     layout.tsx
     globals.css
     api/
-      clusters/           ← GET clusters with source filter
+      clusters/           ← GET clusters with optional month filter
       health/             ← GET liveness check
       recluster/          ← POST trigger re-clustering
       similar-tickets/    ← GET semantic search
@@ -214,7 +201,6 @@ frontend/
       upload-csv/
       generate-summary/
       draft-qa-alert/
-      sync-marketplaces/
   components/
     types.ts              ← Ticket, Cluster, TrendFilter, Space
     tokens.ts             ← Design tokens (T, PRIORITY)
@@ -277,3 +263,18 @@ job_runs         (id, job_type, status, tickets_processed,
 | Hardware Defects | Decreasing |
 | Mouse / Controller Issues | Stable |
 | Returns / Warranty | Decreasing |
+
+---
+
+## Design Decisions & What I'd Improve
+
+**Why K-Means with a fixed k range?**
+K-Means on L2-normalised embeddings approximates spherical clustering, which works well for semantically distinct support categories. Dynamic k (1 cluster per ~12 tickets, clamped to 7–20) avoids the need to hand-tune k as ticket volume grows.
+
+**What I'd do differently with more time:**
+
+- **Replace K-Means with HDBSCAN.** K-Means forces every ticket into a cluster and requires specifying k upfront. HDBSCAN discovers cluster count automatically and handles outlier tickets gracefully — better for real support queues where issues appear and disappear unpredictably.
+- **Finer trend thresholds per cluster.** The current ±25% threshold is global. High-volume clusters need a larger absolute change to be meaningful; low-volume clusters are too sensitive. A per-cluster baseline with statistical significance testing (e.g. z-score on a rolling window) would reduce false trend alerts.
+- **Replace spawned Python processes with a persistent job queue.** Currently `upload-csv` and `recluster` spawn subprocesses via `execFile`. Under concurrent requests this races and blocks the Node event loop. A proper queue (BullMQ + Redis, or Supabase Edge Functions) would handle retries, backpressure, and progress streaming cleanly.
+- **Incremental re-clustering.** Today every CSV upload triggers a full K-Means pass over all tickets. With thousands of tickets this becomes slow. An incremental approach — assign new tickets to nearest centroid first, only re-cluster when centroid drift exceeds a threshold — would keep uploads fast.
+- **Persist cluster identity across re-clusters.** Each re-cluster wipes and rebuilds all clusters, so cluster UUIDs change. This breaks any external references (saved links, alerts). Matching new clusters to old ones by centroid cosine similarity and preserving IDs would give stable cluster identities over time.

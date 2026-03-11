@@ -61,6 +61,12 @@ export async function POST(request: Request) {
       );
     }
 
+    // ── Read optional month field ─────────────────────────────
+    const monthField = formData.get("month");
+    const month = typeof monthField === "string" && /^\d{4}-\d{2}$/.test(monthField)
+      ? monthField
+      : null;
+
     // ── Write to temp file ───────────────────────────────────
     // Use a UUID suffix to avoid collisions under concurrent requests
     const bytes = await file.arrayBuffer();
@@ -69,9 +75,12 @@ export async function POST(request: Request) {
 
     // ── Execute Python processing script ─────────────────────
     const python = getPythonExec();
-    const { stdout, stderr } = await execFileAsync(
+    const scriptArgs = ["--file", tempPath];
+    if (month) scriptArgs.push("--month", month);
+
+    const { stdout } = await execFileAsync(
       python,
-      [SCRIPT_PATH, "--file", tempPath],
+      [SCRIPT_PATH, ...scriptArgs],
       {
         cwd: BACKEND_DIR,
         timeout: 280_000,
@@ -87,12 +96,20 @@ export async function POST(request: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Processing failed";
     const stderr = (err as { stderr?: string }).stderr ?? "";
+    const stdout = (err as { stdout?: string }).stdout ?? "";
 
-    // Log full details server-side only — never expose internal paths or stack traces
-    console.error("[/api/upload-csv]", message, "\nSTDERR:", stderr);
+    console.error("[/api/upload-csv]", message, "\nSTDOUT:", stdout, "\nSTDERR:", stderr);
+
+    // Surface the last meaningful lines so the UI can display a useful message.
+    const detail = (stderr || stdout || message)
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(-8)
+      .join("\n");
 
     return NextResponse.json(
-      { error: "CSV processing failed. Please check your file format and try again." },
+      { error: "CSV processing failed. Please check your file format and try again.", detail },
       { status: 500 }
     );
   } finally {

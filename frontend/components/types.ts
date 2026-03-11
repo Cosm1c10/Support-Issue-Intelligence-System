@@ -21,4 +21,3 @@ export interface Cluster {
 }
 
 export type TrendFilter = "all" | "Increasing" | "Decreasing" | "Stable";
-export type Space = "support" | "marketplace";
