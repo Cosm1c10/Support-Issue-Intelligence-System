@@ -110,7 +110,7 @@ export function ClusterPieChart({ clusters }: Props) {
       {/* Donut chart — no legend inside recharts */}
       <Chart config={chartConfig} className="mx-auto aspect-square max-h-[170px] w-full">
         <PieChart>
-          <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+          <ChartTooltip cursor={false} content={(props) => <ChartTooltipContent {...props} hideLabel />} />
           <Pie
             data={chartData}
             dataKey="tickets"

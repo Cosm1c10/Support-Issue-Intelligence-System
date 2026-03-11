@@ -136,12 +136,12 @@ export function ClusterTrendsChart({ clusters }: Props) {
             tick={(props: any) => <EdgeAwareTick {...props} />}
           />
           <YAxis hide />
-          <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+          <ChartTooltip cursor={false} content={(props) => <ChartTooltipContent {...props} indicator="dot" />} />
 
           <Area dataKey="prev" type="monotone" fill="url(#fillPrev)" fillOpacity={1} stroke="var(--color-prev)" strokeWidth={1.5} />
           <Area dataKey="curr" type="monotone" fill="url(#fillCurr)" fillOpacity={1} stroke="var(--color-curr)" strokeWidth={2} />
 
-          <ChartLegend content={<ChartLegendContent />} />
+          <ChartLegend content={(props) => <ChartLegendContent {...props} />} />
         </AreaChart>
       </Chart>
     </div>
