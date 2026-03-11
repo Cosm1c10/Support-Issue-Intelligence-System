@@ -139,6 +139,13 @@ async function nameCluster(subjects: string[]): Promise<{ name: string; descript
   }
 }
 
+// ── Chunk an array into fixed-size pieces ─────────────────────
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 // ── Full re-cluster (mirrors recluster_all_tickets in process_csv.py) ──
 async function reclusterAll(): Promise<void> {
   // Fetch all tickets with embeddings (paginated)
@@ -170,7 +177,7 @@ async function reclusterAll(): Promise<void> {
   for (let i = 0; i < k; i++) groups.set(i, []);
   valid.forEach((t, i) => groups.get(labels[i])!.push(t));
 
-  // Wipe old clusters + memberships (same pattern as the Python script)
+  // Wipe old clusters + memberships — members first (FK constraint)
   await supabaseFetch(
     "cluster_members?ticket_id=neq.00000000-0000-0000-0000-000000000000",
     { method: "DELETE" }
@@ -183,47 +190,53 @@ async function reclusterAll(): Promise<void> {
   const now = Date.now();
   const MS_30 = 30 * 24 * 60 * 60 * 1000;
 
-  for (let c = 0; c < k; c++) {
-    const members = groups.get(c) ?? [];
-    if (!members.length) continue;
+  // ── Fan-out: name all clusters in parallel (was k sequential GPT calls) ──
+  const clusterMeta = await Promise.all(
+    Array.from({ length: k }, async (_, c) => {
+      const members = groups.get(c) ?? [];
+      if (!members.length) return null;
+      const { name, description } = await nameCluster(members.map(t => t.subject));
+      const curr = members.filter(t => { const ts = new Date(t.created_at).getTime(); return ts >= now - MS_30 && ts <= now; }).length;
+      const prev = members.filter(t => { const ts = new Date(t.created_at).getTime(); return ts >= now - 2 * MS_30 && ts < now - MS_30; }).length;
+      return { members, name, description, curr, prev, centroid: centroids[c] };
+    })
+  );
 
-    const { name, description } = await nameCluster(members.map(t => t.subject));
-
-    const curr = members.filter(t => { const ts = new Date(t.created_at).getTime(); return ts >= now - MS_30 && ts <= now; }).length;
-    const prev = members.filter(t => { const ts = new Date(t.created_at).getTime(); return ts >= now - 2 * MS_30 && ts < now - MS_30; }).length;
-
-    const clusterRes = await supabaseFetch("issue_clusters", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({
-        name,
-        description,
-        ticket_count:       members.length,
-        prev_window_count:  prev,
-        curr_window_count:  curr,
-        trend:              calcTrend(curr, prev),
-        centroid_embedding: centroids[c],
-        updated_at:         new Date(now).toISOString(),
-      }),
-    });
-    if (!clusterRes.ok) continue;
-    const [cluster] = await clusterRes.json();
-    if (!cluster?.id) continue;
-
-    // Batch-insert members (50 per request)
-    for (let i = 0; i < members.length; i += 50) {
-      await supabaseFetch("cluster_members", {
+  // ── Fan-out: insert all clusters + their members in parallel ──
+  await Promise.all(
+    clusterMeta.filter(Boolean).map(async (meta) => {
+      const { members, name, description, curr, prev, centroid } = meta!;
+      const clusterRes = await supabaseFetch("issue_clusters", {
         method: "POST",
-        body: JSON.stringify(
-          members.slice(i, i + 50).map(t => ({
-            ticket_id:        t.id,
-            cluster_id:       cluster.id,
-            similarity_score: 1.0,
-          }))
-        ),
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          name,
+          description,
+          ticket_count:       members.length,
+          prev_window_count:  prev,
+          curr_window_count:  curr,
+          trend:              calcTrend(curr, prev),
+          centroid_embedding: centroid,
+          updated_at:         new Date(now).toISOString(),
+        }),
       });
-    }
-  }
+      if (!clusterRes.ok) return;
+      const [cluster] = await clusterRes.json();
+      if (!cluster?.id) return;
+
+      // Fan-out member batch inserts (50 rows each) in parallel
+      await Promise.all(
+        chunkArray(members, 50).map(batch =>
+          supabaseFetch("cluster_members", {
+            method: "POST",
+            body: JSON.stringify(
+              batch.map(t => ({ ticket_id: t.id, cluster_id: cluster.id, similarity_score: 1.0 }))
+            ),
+          })
+        )
+      );
+    })
+  );
 }
 
 // ── Simple CSV parser (handles quoted fields, CRLF/LF) ────────
@@ -323,28 +336,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Embedding failed", detail: String(err) }, { status: 502 });
   }
 
-  // Insert tickets (return=minimal — we don't need the row back; reclusterAll re-fetches all)
+  // Build all ticket rows upfront, then batch-insert in parallel (10 per batch)
+  const ts = Date.now();
+  const ticketRows = validRows.map((row, i) => ({
+    ticket_id:    `CSV-${ts}-${i}`,
+    subject:      row.subject.trim(),
+    description:  (row.description ?? row.subject).trim(),
+    priority:     row.priority     || "Medium",
+    ticket_type:  row.ticket_type  || "Support Request",
+    product_area: row.product_area || "General",
+    status:       "Open",
+    created_at:   row.date ? new Date(row.date).toISOString() : new Date().toISOString(),
+    embedding:    embeddings[i],
+  }));
+
+  const insertChunks = chunkArray(ticketRows, 10);
+  const insertResults = await Promise.all(
+    insertChunks.map(chunk =>
+      supabaseFetch("tickets", {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify(chunk),
+      })
+    )
+  );
   let inserted = 0;
-  for (let i = 0; i < validRows.length; i++) {
-    const row = validRows[i];
-    const ticketId = `CSV-${Date.now()}-${i}`;
-    const res = await supabaseFetch("tickets", {
-      method: "POST",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({
-        ticket_id:    ticketId,
-        subject:      row.subject.trim(),
-        description:  (row.description ?? row.subject).trim(),
-        priority:     row.priority     || "Medium",
-        ticket_type:  row.ticket_type  || "Support Request",
-        product_area: row.product_area || "General",
-        status:       "Open",
-        created_at:   row.date ? new Date(row.date).toISOString() : new Date().toISOString(),
-        embedding:    embeddings[i],
-      }),
-    });
-    if (res.ok) inserted++;
-  }
+  insertResults.forEach((res, i) => { if (res.ok) inserted += insertChunks[i].length; });
 
   if (inserted === 0)
     return NextResponse.json(
