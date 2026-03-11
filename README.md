@@ -102,13 +102,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deploying to Vercel
 
-The frontend deploys to Vercel with zero extra configuration. A `vercel.json` at the repo root points Vercel at the `frontend/` subfolder automatically.
-
 ### Steps
 
 1. Push this repo to GitHub.
-2. Import the project in [vercel.com/new](https://vercel.com/new). Leave **Root Directory** as the default (the `vercel.json` handles it).
-3. Add the three required environment variables in **Settings > Environment Variables**:
+2. Import the project in [vercel.com/new](https://vercel.com/new).
+3. Set **Root Directory** to `frontend` (Vercel > project settings > General > Root Directory). This tells Vercel where the Next.js app lives.
+4. Add the three required environment variables in **Settings > Environment Variables**:
 
 | Variable | Where to find it |
 |----------|-----------------|
@@ -116,7 +115,7 @@ The frontend deploys to Vercel with zero extra configuration. A `vercel.json` at
 | `SUPABASE_SERVICE_KEY` | Supabase dashboard > Settings > API > service_role key |
 | `OPENAI_API_KEY` | platform.openai.com > API keys |
 
-4. Deploy. The dashboard, AI summaries, semantic search, and real-time updates all work on Vercel.
+5. Deploy. The dashboard, AI summaries, semantic search, and real-time updates all work on Vercel.
 
 ### What does not work on Vercel
 
