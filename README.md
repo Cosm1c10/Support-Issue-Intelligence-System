@@ -7,146 +7,35 @@ A full-stack dashboard that clusters support tickets by semantic similarity, det
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Browser  (Next.js App Router)                     │
-│                                                                       │
-│   ┌──────────────────────┐   ┌──────────────┐   ┌────────────────┐  │
-│   │    Dashboard UI       │   │  CSV Upload  │   │ Supabase RT    │  │
-│   │  cluster grid · charts│   │  drag & drop │   │ WebSocket      │  │
-│   │  search · filters     │   │  modal       │   │ auto-refresh   │  │
-│   └──────────┬───────────┘   └──────┬───────┘   └───────▲────────┘  │
-└──────────────┼──────────────────────┼───────────────────┼────────────┘
-               │ GET /api/clusters    │ POST /api/upload-csv
-               │                      │                   │ WebSocket NOTIFY
-┌──────────────▼──────────────────────▼───────────────────┼────────────┐
-│                 Vercel  (Next.js API Routes — serverless)             │
-│                                                          │            │
-│  /api/clusters          → RPC get_clusters_with_tickets  │            │
-│  /api/upload-csv        → embed → K-Means (JS) → store   │            │
-│  /api/webhooks/…        → embed → cosine assign → insert │            │
-│  /api/generate-summary  → GPT-4o-mini root-cause         │            │
-│  /api/draft-qa-alert    → GPT-4o-mini escalation email   │            │
-│  /api/similar-tickets   → embed → pgvector cosine search │            │
-│  /api/health            → liveness check                 │            │
-└────────────┬────────────────────────────┬────────────────┼────────────┘
-             │                            │                │
-             │ REST / RPC                 │ embeddings     │
-             ▼                            ▼  + GPT         │
-┌────────────────────────┐   ┌────────────────────────┐   │
-│  Supabase              │   │  OpenAI API             │   │
-│  PostgreSQL + pgvector │   │                        │   │
-│                        │   │  text-embedding-3-small │   │
-│  tickets               │   │  1536-dim vectors       │   │
-│  ├─ embedding          │   │                        │   │
-│  │  vector(1536)       │   │  gpt-4o-mini            │   │
-│  └─ HNSW index         │   │  cluster naming         │   │
-│                        │   │  summaries · alerts     │   │
-│  issue_clusters        │   └────────────────────────┘   │
-│  ├─ centroid_embedding │                                 │
-│  ├─ trend counts       │                                 │
-│  └─ prev / curr window │─────────────────────────────────┘
-│                        │   Realtime publication → WebSocket
-│  cluster_members       │
-│  └─ ticket ↔ cluster   │
-│     similarity_score   │
-└────────────────────────┘
-```
-
----
-
-## CSV Upload Pipeline
-
-```
-  User drops .csv file
-          │
-          ▼
-  ┌───────────────────────────────────────────┐
-  │  Parse CSV                                │
-  │  · strip UTF-8 BOM                        │
-  │  · CRLF / LF normalisation                │
-  │  · column alias mapping                   │
-  │    (e.g. "Ticket Subject" → "subject")    │
-  └───────────────────┬───────────────────────┘
-                      │
-          ┌───────────▼────────────┐
-          │  Valid rows with       │
-          │  a non-empty subject?  │
-          └───┬───────────────┬────┘
-             No               Yes
-              ▼                │
-        ┌──────────┐           ▼
-        │  ERROR   │  ┌────────────────────────────────────┐
-        │ 400      │  │  Embed all tickets                 │
-        └──────────┘  │  OpenAI text-embedding-3-small     │
-                      │  batches of 100 · sequential       │
-                      └────────────────┬───────────────────┘
-                                       │
-                           ┌───────────▼────────────┐
-                           │  Embedding succeeded?  │
-                           └───┬───────────────┬────┘
-                              No               Yes
-                               ▼                │
-                         ┌──────────┐           ▼
-                         │  ERROR   │  ┌─────────────────────────────────┐
-                         │  502     │  │  Batch-insert tickets           │
-                         └──────────┘  │  into Supabase                  │
-                                       │  10 rows/request · all batches  │
-                                       │  fired in parallel              │
-                                       └────────────────┬────────────────┘
-                                                        │
-                                            ┌───────────▼────────────┐
-                                            │  Any rows inserted?    │
-                                            └───┬───────────────┬────┘
-                                               No               Yes
-                                                ▼                │
-                                          ┌──────────┐           ▼
-                                          │  ERROR   │  ┌────────────────────────────┐
-                                          │  502     │  │  Fetch ALL tickets         │
-                                          └──────────┘  │  with embeddings from DB   │
-                                                         │  paginated · 1 000/page   │
-                                                         └────────────┬───────────────┘
-                                                                      │
-                                                                      ▼
-                                                         ┌────────────────────────────┐
-                                                         │  K-Means++ (JavaScript)    │
-                                                         │  · cosine distance         │
-                                                         │  · up to 20 iterations     │
-                                                         │  · k = clamp(n÷12, 7..20)  │
-                                                         └────────────┬───────────────┘
-                                                                      │
-                                                                      ▼
-                                                         ┌────────────────────────────┐
-                                                         │  Wipe old data             │
-                                                         │  DELETE cluster_members    │
-                                                         │  DELETE issue_clusters     │
-                                                         └────────────┬───────────────┘
-                                                                      │
-                                                                      ▼
-                                                         ┌────────────────────────────┐
-                                                         │  Name all k clusters       │
-                                                         │  Promise.all — parallel    │
-                                                         │  GPT-4o-mini per cluster   │
-                                                         │  → name + description      │
-                                                         └────────────┬───────────────┘
-                                                                      │
-                                                                      ▼
-                                                         ┌────────────────────────────┐
-                                                         │  Insert clusters + members │
-                                                         │  Promise.all — parallel    │
-                                                         │  50 members per batch      │
-                                                         └────────────┬───────────────┘
-                                                                      │
-                                                                      ▼
-                                                         ┌────────────────────────────┐
-                                                         │  Dashboard refresh         │
-                                                         │  GET /api/clusters         │
-                                                         │  RPC get_clusters_with_    │
-                                                         │  tickets()                 │
-                                                         └────────────┬───────────────┘
-                                                                      │
-                                                                      ▼
-                                                              Cluster grid updates
-                                                          trends · counts · example tickets
+┌──────────────────────────────────────────┐
+│         Browser  (Next.js App Router)    │
+│  Dashboard UI · CSV Upload · Charts      │
+└────────────┬─────────────────────▲───────┘
+             │  HTTP requests      │ Supabase Realtime
+             │                     │ (WebSocket auto-refresh)
+┌────────────▼─────────────────────┴───────┐
+│      Vercel  (Next.js API Routes)        │
+│                                          │
+│  GET  /api/clusters                      │
+│  POST /api/upload-csv                    │
+│  POST /api/webhooks/incoming-ticket      │
+│  POST /api/generate-summary             │
+│  POST /api/draft-qa-alert               │
+│  GET  /api/similar-tickets              │
+└────────────┬──────────────┬─────────────┘
+             │              │
+             ▼              ▼
+┌─────────────────┐  ┌──────────────────┐
+│    Supabase     │  │   OpenAI API     │
+│  PostgreSQL +   │  │                  │
+│   pgvector      │  │  text-embedding  │
+│                 │  │  -3-small        │
+│  tickets        │  │  (embeddings)    │
+│  issue_clusters │  │                  │
+│  cluster_members│  │  gpt-4o-mini     │
+│  HNSW index     │  │  (naming,        │
+│  Realtime pub.  │  │   summaries)     │
+└─────────────────┘  └──────────────────┘
 ```
 
 ---
