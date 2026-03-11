@@ -94,10 +94,48 @@ async function supabaseFetch(
   });
 }
 
+// ── Retry helper: exponential back-off ────────────────────────
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  baseDelayMs = 500
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries - 1) {
+        await new Promise((r) =>
+          setTimeout(r, baseDelayMs * Math.pow(2, attempt))
+        );
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// ── Log a failed webhook payload for later replay ─────────────
+async function logFailedWebhook(payload: unknown, err: unknown) {
+  try {
+    await supabaseFetch("job_runs", {
+      method: "POST",
+      body: JSON.stringify({
+        job_type: "webhook",
+        status: "failed",
+        error_message: `${err instanceof Error ? err.message : String(err)} | payload: ${JSON.stringify(payload).slice(0, 500)}`,
+        finished_at: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    // Best-effort — never throw from error handler
+  }
+}
+
 // ── Main handler ───────────────────────────────────────────────
 export async function POST(request: Request) {
-  // Verify optional shared secret to prevent unauthorized calls.
-  // Set WEBHOOK_SECRET in your environment to enable this check.
+  // WEBHOOK_SECRET is required when set — unauthorised callers are rejected.
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (webhookSecret) {
     const provided = request.headers.get("x-webhook-secret");
@@ -130,33 +168,42 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── 1. Embed the incoming ticket ─────────────────────────────
-  const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "text-embedding-3-small",
-      input: `${subject}. ${description}`.trim(),
-    }),
-  });
+  // ── 1. Embed the incoming ticket (with retry) ────────────────
+  let embedding: number[];
+  try {
+    embedding = await withRetry(async () => {
+      const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "text-embedding-3-small",
+          input: `${subject}. ${description}`.trim(),
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
 
-  if (!embedRes.ok) {
-    const detail = await embedRes.text();
-    console.error("[webhook] OpenAI embedding error:", detail);
+      if (!embedRes.ok) {
+        const detail = await embedRes.text();
+        throw new Error(`OpenAI ${embedRes.status}: ${detail}`);
+      }
+
+      const embedData = await embedRes.json();
+      const vec: number[] | undefined = embedData?.data?.[0]?.embedding;
+      if (!Array.isArray(vec) || vec.length === 0) {
+        throw new Error("Unexpected embedding response shape");
+      }
+      return vec;
+    });
+  } catch (err) {
+    console.error("[webhook] Embedding failed after retries:", err);
+    await logFailedWebhook(body, err);
     return NextResponse.json(
-      { error: "Embedding failed", detail },
+      { error: "Embedding failed", detail: String(err), queued: false },
       { status: 502 }
     );
-  }
-
-  const embedData = await embedRes.json();
-  const embedding: number[] | undefined = embedData?.data?.[0]?.embedding;
-  if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
-    console.error("[webhook] Unexpected embedding response shape:", embedData);
-    return NextResponse.json({ error: "Unexpected embedding response" }, { status: 502 });
   }
 
   // ── 2. Fetch all cluster centroids ───────────────────────────
