@@ -57,7 +57,7 @@ function EdgeAwareTick({
 
 const chartConfig = {
   curr: { label: "Current 30 days",  color: "var(--chart-1)" },  // kreo purple
-  prev: { label: "Previous 30 days", color: "var(--chart-3)" },  // cyan — clearly distinct
+  prev: { label: "Previous 30 days", color: "var(--chart-3)" },  // deep violet — distinct from curr purple
 } satisfies ChartConfig
 
 /* ── Component ────────────────────────────────────────────── */

@@ -237,8 +237,8 @@ export default function Home() {
             AI · Semantic Clustering · Trend Detection · Agentic Actions
           </div>
           <h1 style={{ fontSize: "clamp(40px, 5.8vw, 64px)", fontWeight: 800, letterSpacing: "-0.045em", color: "var(--t1)", lineHeight: 1.06, marginBottom: 18, opacity: 0, animation: "fade-up 0.52s var(--smooth) 0.07s forwards" }}>
-            Issue Intelligence
-            <span style={{ display: "block", background: "linear-gradient(90deg, var(--t3) 0%, var(--t4) 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Dashboard</span>
+            Support Intelligence
+            <span style={{ display: "block", background: "linear-gradient(90deg, var(--t3) 0%, var(--t4) 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>System</span>
           </h1>
           <p style={{ fontSize: 15, color: "var(--t3)", maxWidth: 500, lineHeight: 1.68, fontWeight: 400, opacity: 0, animation: "fade-up 0.52s var(--smooth) 0.14s forwards", margin: "0 auto" }}>
             Support tickets automatically clustered by semantic similarity. Trends detected across rolling 30-day windows. AI root cause analysis and QA alerts on demand.
