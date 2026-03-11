@@ -87,7 +87,9 @@ function parseCSV(text: string): Record<string, string>[] {
     "product purchased": "product_area",
     "product area": "product_area",
   };
-  const rawHeaders = splitRow(lines[0]).map((h) => h.toLowerCase().replace(/^"|"$/g, ""));
+  const rawHeaders = splitRow(lines[0]).map((h) =>
+    h.toLowerCase().replace(/^[\s"]+|[\s"]+$/g, "").trim()
+  );
   const headers = rawHeaders.map((h) => ALIASES[h] ?? h);
   const rows: Record<string, string>[] = [];
 
@@ -145,14 +147,20 @@ export async function POST(request: Request) {
     );
   }
 
-  // Parse CSV
-  const text = await file.text();
+  // Parse CSV — strip BOM then normalise line endings
+  const rawText = await file.text();
+  const text = rawText.replace(/^\uFEFF/, ""); // strip UTF-8 BOM if present
   const rows = parseCSV(text);
   const validRows = rows.filter((r) => r.subject?.trim());
 
   if (validRows.length === 0) {
+    // Return the detected headers so the user can see what was parsed
+    const sampleHeaders = rows.length > 0 ? Object.keys(rows[0]).join(", ") : "(no rows)";
     return NextResponse.json(
-      { error: "No valid rows found. CSV must have a 'subject' column with at least one non-empty value." },
+      {
+        error: "No valid rows found. The CSV must have a 'subject' column (or 'Ticket Subject').",
+        detected_columns: sampleHeaders,
+      },
       { status: 400 }
     );
   }
