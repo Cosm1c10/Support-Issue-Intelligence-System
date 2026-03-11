@@ -1,44 +1,98 @@
 # Support Issue Intelligence System
 
-A full-stack dashboard that clusters support tickets by semantic similarity, detects trends, and surfaces AI-powered insights. Built as a Kreo internship assignment.
+A full-stack dashboard that clusters support tickets by semantic similarity, detects trends, and surfaces AI-powered insights — deployable entirely on Vercel with no Python runtime required.
 
 ---
 
-## Architecture Overview
+## Architecture
 
+```mermaid
+graph TD
+    subgraph Browser["Browser · Next.js App Router"]
+        UI["Dashboard UI\nCluster grid · charts · search"]
+        CSV["CSV Upload Modal\ndrag-and-drop"]
+        WS["Supabase Realtime\nWebSocket auto-refresh"]
+    end
+
+    subgraph Vercel["Vercel · Next.js API Routes (serverless)"]
+        R_clusters["/api/clusters\nGET · month filter · trend calc"]
+        R_upload["/api/upload-csv\nPOST · embed → K-Means → store"]
+        R_webhook["/api/webhooks/incoming-ticket\nPOST · embed → assign → insert"]
+        R_summary["/api/generate-summary\nPOST · GPT root-cause"]
+        R_alert["/api/draft-qa-alert\nPOST · GPT escalation email"]
+        R_search["/api/similar-tickets\nGET · pgvector cosine search"]
+        R_health["/api/health\nGET · liveness check"]
+    end
+
+    subgraph Supabase["Supabase · PostgreSQL + pgvector"]
+        T["tickets\nvector(1536) · HNSW index"]
+        IC["issue_clusters\ncentroid · trend counts"]
+        CM["cluster_members\nticket ↔ cluster · similarity_score"]
+        RT["Realtime publication"]
+    end
+
+    subgraph OpenAI["OpenAI API"]
+        EMB["text-embedding-3-small\n1536-dim embeddings"]
+        GPT["gpt-4o-mini\ncluster naming · summaries · alerts"]
+    end
+
+    UI -->|fetch| R_clusters
+    CSV -->|multipart POST| R_upload
+    R_clusters -->|"RPC get_clusters_with_tickets()"| T & IC & CM
+    R_upload -->|batch embed| EMB
+    R_upload -->|parallel insert chunks| T
+    R_upload -->|"K-Means++ (JS)"| R_upload
+    R_upload -->|parallel GPT calls| GPT
+    R_upload -->|insert clusters + members| IC & CM
+    R_webhook -->|embed| EMB
+    R_webhook -->|cosine assign + insert| T & CM
+    R_summary -->|GPT| GPT
+    R_alert -->|GPT| GPT
+    R_search -->|embed + RPC find_similar_tickets| EMB & T
+    IC & CM -->|NOTIFY| RT
+    RT -->|WebSocket push| WS
+    WS -->|re-render| UI
 ```
-Browser (Next.js App Router)
-  │
-  ├── GET  /api/clusters            ← Supabase RPC → cluster grid
-  ├── POST /api/webhooks/incoming-ticket  ← embed → assign → insert
-  ├── POST /api/upload-csv          ← spawns process_csv.py
-  ├── POST /api/recluster           ← spawns add_tickets.py (K-Means)
-  ├── POST /api/generate-summary    ← GPT-4o-mini root cause
-  ├── POST /api/draft-qa-alert      ← GPT-4o-mini alert email
-  ├── GET  /api/similar-tickets     ← OpenAI embed → pgvector search
-  └── GET  /api/health              ← liveness check
-        │
-        ▼
-  Supabase (PostgreSQL + pgvector)
-  ├── tickets            (embedding vector(1536), HNSW index)
-  ├── issue_clusters     (centroid + trend counts)
-  ├── cluster_members    (ticket ↔ cluster junction)
-  └── job_runs           (async job tracking)
-        │
-        └── Realtime WebSocket → dashboard auto-refresh
+
+---
+
+## CSV Upload Pipeline (Flowchart)
+
+```mermaid
+flowchart TD
+    A([User uploads CSV]) --> B[Parse CSV\nstrip UTF-8 BOM · CRLF/LF\ncolumn alias normalisation]
+    B --> C{Has rows\nwith a subject?}
+    C -- No --> ERR1([Error: no valid rows\nreturns detected columns])
+    C -- Yes --> D["Embed all tickets in parallel batches\nOpenAI text-embedding-3-small\n100 inputs per batch"]
+    D --> E{Embedding\nsucceeded?}
+    E -- No --> ERR2([Error: embedding failed\n502 returned])
+    E -- Yes --> F["Batch-insert tickets into Supabase\n10 rows per request · all batches in parallel\nPrefer: return=minimal"]
+    F --> G{Any rows\ninserted?}
+    G -- No --> ERR3([Error: check Supabase\npermissions / schema])
+    G -- Yes --> H["Fetch ALL tickets with embeddings\nfrom Supabase · paginated 1 000/page"]
+    H --> I["K-Means++ clustering in JavaScript\ncosine distance · 20 iterations\nk = clamp⌊total ÷ 12⌋, 7..20"]
+    I --> J["Wipe old clusters + members\nDELETE cluster_members first\nDELETE issue_clusters second"]
+    J --> K["Fan-out: name all k clusters simultaneously\nPromise.all → k parallel GPT-4o-mini calls\nreturns name + one-sentence description"]
+    K --> L["Fan-out: insert clusters + assign members\nPromise.all across k clusters\neach cluster's member batches also parallel"]
+    L --> M["Dashboard calls fetchClusters\ncache:no-store · GET /api/clusters\nRPC get_clusters_with_tickets"]
+    M --> N([Cluster grid updates\ntrends · counts · example tickets])
 ```
 
-**Tech stack:**
+---
 
-| Layer | Technology |
-|-------|-----------|
-| Database | Supabase (PostgreSQL + pgvector) |
-| Embeddings | OpenAI text-embedding-3-small (1536 dims) |
-| Clustering | scikit-learn K-Means (k=7, L2-normalised) |
-| Cluster naming | GPT-4o-mini |
-| Frontend | Next.js 15 App Router + Tailwind CSS |
-| UI | shadcn/ui, Lucide icons |
-| Real-time | Supabase Realtime (WebSocket) |
+## Tech Stack
+
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Database | Supabase (PostgreSQL + pgvector) | HNSW index on `embedding vector(1536)` |
+| Embeddings | OpenAI `text-embedding-3-small` | 1536 dims, batched 100 at a time |
+| Clustering | K-Means++ in JavaScript | Pure Node.js, runs on Vercel — no Python needed |
+| Cluster naming | GPT-4o-mini | Parallel calls, JSON response format |
+| AI summaries / alerts | GPT-4o-mini | Root-cause analysis + QA escalation email |
+| Frontend | Next.js 15 App Router + Tailwind CSS | |
+| UI components | shadcn/ui + Lucide icons + Recharts | Area + pie charts |
+| Real-time | Supabase Realtime (WebSocket) | Subscribes to `issue_clusters` |
+| Deployment | Vercel (serverless, no Python runtime) | `maxDuration = 300 s` on upload route |
 
 ---
 
@@ -47,50 +101,46 @@ Browser (Next.js App Router)
 ### 1. Prerequisites
 
 - Node.js 18+
-- Python 3.10+
 - A [Supabase](https://supabase.com) project (free tier works)
 - An [OpenAI API key](https://platform.openai.com)
 
 ### 2. Database setup
 
-Run `backend/scripts/setup_db.sql` in your Supabase SQL Editor, then run the migrations:
+Run the SQL files in order in your Supabase SQL Editor:
 
 ```sql
--- Run in Supabase SQL Editor
+-- 1. Core schema (tables, HNSW index, RPC functions, RLS)
 \i backend/scripts/setup_db.sql
+
+-- 2. Additional migrations (run after setup_db)
 \i backend/scripts/add_job_runs.sql
 \i backend/scripts/add_source_column.sql
 ```
 
-### 3. Backend environment
+### 3. Seed the database (optional but recommended)
 
-```bash
-cp backend/.env.example backend/.env
-# Fill in:
-# SUPABASE_URL=https://<project>.supabase.co
-# SUPABASE_SERVICE_KEY=<service_role_key>
-# OPENAI_API_KEY=sk-...
-```
-
-### 4. Seed the database
+If you want pre-populated data before uploading a CSV, run one of the Python seed scripts locally:
 
 ```bash
 cd backend
 pip install -r requirements.txt
+cp .env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_KEY
 
-# Option A - Kreo peripheral support tickets (recommended)
+# Kreo peripheral hardware tickets (recommended, 270 tickets, 7 clusters)
 python scripts/seed_kreo_data.py
 
-# Option B - generic mock tickets
+# Generic mock tickets (80 tickets)
 python scripts/seed_tickets.py
 ```
 
-### 5. Frontend
+> **Note:** Seeding is optional. The CSV upload pipeline will create clusters from scratch automatically if `issue_clusters` is empty.
+
+### 4. Frontend
 
 ```bash
 cd frontend
-cp .env.local.example .env.local   # or copy backend/.env values
-# SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_KEY
+cp .env.local.example .env.local
+# Set SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_KEY
 
 npm install
 npm run dev
@@ -102,29 +152,20 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deploying to Vercel
 
-### Steps
-
 1. Push this repo to GitHub.
-2. Import the project in [vercel.com/new](https://vercel.com/new).
-3. Set **Root Directory** to `frontend` (Vercel > project settings > General > Root Directory). This tells Vercel where the Next.js app lives.
-4. Add the three required environment variables in **Settings > Environment Variables**:
+2. Import the project at [vercel.com/new](https://vercel.com/new).
+3. Set **Root Directory** to `frontend` in Vercel project settings.
+4. Add environment variables under **Settings → Environment Variables**:
 
 | Variable | Where to find it |
 |----------|-----------------|
-| `SUPABASE_URL` | Supabase dashboard > Settings > API > Project URL |
-| `SUPABASE_SERVICE_KEY` | Supabase dashboard > Settings > API > service_role key |
-| `OPENAI_API_KEY` | platform.openai.com > API keys |
+| `SUPABASE_URL` | Supabase → Settings → API → Project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase → Settings → API → `service_role` key |
+| `OPENAI_API_KEY` | platform.openai.com → API keys |
 
-5. Deploy. The dashboard, AI summaries, semantic search, and real-time updates all work on Vercel.
+5. Deploy. Everything — including CSV upload and K-Means re-clustering — works on Vercel.
 
-### What does not work on Vercel
-
-Two endpoints spawn a Python subprocess (K-Means via scikit-learn) and cannot run in a Vercel serverless environment:
-
-- `POST /api/recluster` - returns `503` with a clear message
-- `POST /api/upload-csv` - returns `503` with a clear message
-
-To use these, run the scripts locally (`add_tickets.py`, `process_csv.py`) or deploy the Python backend separately (Railway, Render, or Fly.io) and call it from there.
+> **Note:** `POST /api/recluster` still requires a Python backend (it spawns `add_tickets.py`). It returns `503` on Vercel. All other routes are fully serverless.
 
 ---
 
@@ -136,44 +177,55 @@ To use these, run the scripts locally (`add_tickets.py`, `process_csv.py`) or de
 | `SUPABASE_SERVICE_KEY` | Yes | Service role key (bypasses RLS) |
 | `OPENAI_API_KEY` | Yes | Used for embeddings + GPT summaries |
 | `WEBHOOK_SECRET` | No | Shared secret for webhook endpoint |
-| `SYNC_SECRET` | No | Shared secret for sync + recluster endpoints |
+| `SYNC_SECRET` | No | Shared secret for recluster endpoint |
 | `BACKEND_DIR` | No | Path to backend dir (default: `../backend`) |
 
 ---
 
 ## Data Ingestion
 
-### Webhook (real-time)
+### CSV Upload (via dashboard UI)
+
+Drag-and-drop a `.csv` file onto the **Upload CSV** button. The pipeline will:
+
+1. Parse and normalise CSV columns (see aliases below)
+2. Embed all tickets via OpenAI in batches of 100
+3. Insert tickets into Supabase in parallel batches of 10
+4. Re-cluster all tickets in the DB with K-Means (k = 7–20)
+5. Name each cluster with GPT-4o-mini (all calls in parallel)
+6. Refresh the dashboard automatically
+
+Accepted CSV columns (case-insensitive; aliases supported):
+
+| Canonical name | Also accepts |
+|----------------|-------------|
+| `subject` | `Ticket Subject`, `ticket_subject` |
+| `description` | `Ticket Description`, `ticket_description` |
+| `date` | `Date of Purchase` |
+| `priority` | `Ticket Priority` |
+| `ticket_type` | `Ticket Type` |
+| `product_area` | `Product Purchased`, `product_purchased` |
+
+### CSV Upload (via curl)
 
 ```bash
-curl -X POST http://localhost:3000/api/webhooks/incoming-ticket \
-  -H "Content-Type: application/json" \
-  -H "x-webhook-secret: <WEBHOOK_SECRET>" \
-  -d '{
-    "id": "GRG-10042",
-    "subject": "Scroll wheel stopped clicking after 2 weeks",
-    "description": "The scroll wheel on my Swarm65...",
-    "priority": "High",
-    "product_area": "Hardware"
-  }'
-```
-
-### CSV Upload
-
-Upload via the dashboard UI, or directly:
-
-```bash
-curl -X POST http://localhost:3000/api/upload-csv \
+curl -X POST https://<your-app>.vercel.app/api/upload-csv \
   -F "file=@your_tickets.csv"
 ```
 
-CSV columns: `subject, description, date, priority, ticket_type, product_area`
-
-### Re-clustering (on-demand)
+### Webhook (real-time single ticket)
 
 ```bash
-curl -X POST http://localhost:3000/api/recluster \
-  -H "x-sync-secret: <SYNC_SECRET>"
+curl -X POST https://<your-app>.vercel.app/api/webhooks/incoming-ticket \
+  -H "Content-Type: application/json" \
+  -H "x-webhook-secret: <WEBHOOK_SECRET>" \
+  -d '{
+    "id": "TKT-10042",
+    "subject": "Scroll wheel stopped clicking after 2 weeks",
+    "description": "The scroll wheel on my Swarm65 feels loose...",
+    "priority": "High",
+    "product_area": "Hardware"
+  }'
 ```
 
 ---
@@ -182,90 +234,107 @@ curl -X POST http://localhost:3000/api/recluster \
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/clusters?month=YYYY-MM\|all` | Fetch clusters (optional month filter) |
+| `GET` | `/api/clusters?month=YYYY-MM\|all` | Fetch clusters with optional month filter |
+| `POST` | `/api/upload-csv` | Batch ingest CSV → embed → K-Means → store |
 | `POST` | `/api/webhooks/incoming-ticket` | Ingest single ticket via webhook |
-| `POST` | `/api/upload-csv` | Batch ingest from CSV |
-| `POST` | `/api/recluster` | Trigger full K-Means re-cluster |
-| `POST` | `/api/generate-summary` | AI root cause summary for a cluster |
+| `POST` | `/api/recluster` | Full K-Means re-cluster (local / non-Vercel only) |
+| `POST` | `/api/generate-summary` | AI root-cause summary for a cluster |
 | `POST` | `/api/draft-qa-alert` | Draft QA escalation email |
-| `GET` | `/api/similar-tickets?text=&threshold=0.6&limit=10` | Semantic search |
-| `GET` | `/api/health` | Liveness check (DB + OpenAI status) |
+| `GET` | `/api/similar-tickets?text=&threshold=0.6&limit=10` | Semantic similarity search |
+| `GET` | `/api/health` | Liveness check (DB + OpenAI connectivity) |
 
 ---
 
 ## Clustering Design
 
-**Two-tier assignment:**
+### K-Means++ (JavaScript)
 
-1. **Real-time** (per ticket): cosine similarity to existing centroids → O(k) assignment
-2. **Batch re-cluster** (on-demand): full K-Means on all tickets → new centroids + GPT naming
+The upload pipeline runs a full K-Means re-cluster after every CSV import:
 
-**Trend detection (30-day windows):**
-```
-prev_window = tickets in [now-60d, now-30d]
-curr_window = tickets in [now-30d, now]
+- **Initialisation:** K-Means++ (distance-weighted seeding) for faster, more stable convergence
+- **Distance metric:** cosine distance on raw embeddings (equivalent to Euclidean on L2-normalised vectors)
+- **Iterations:** up to 20, stops early on convergence
+- **k selection:** `k = clamp(⌊total_tickets ÷ 12⌋, 7, 20)`
 
-> +25% change → "Increasing"
-> -25% change → "Decreasing"
-otherwise    → "Stable"
-```
-
----
-
-## Frontend Component Structure
+### Trend detection (30-day rolling windows)
 
 ```
-frontend/
-  app/
-    page.tsx              ← Main orchestrator (~260 lines)
-    layout.tsx
-    globals.css
-    api/
-      clusters/           ← GET clusters with optional month filter
-      health/             ← GET liveness check
-      recluster/          ← POST trigger re-clustering
-      similar-tickets/    ← GET semantic search
-      webhooks/incoming-ticket/
-      upload-csv/
-      generate-summary/
-      draft-qa-alert/
-  components/
-    types.ts              ← Ticket, Cluster, TrendFilter, Space
-    tokens.ts             ← Design tokens (T, PRIORITY)
-    utils.ts              ← timeAgo, pctChange helpers
-    TrendPill.tsx         ← TrendPill, PriorityDot atoms
-    MetricCard.tsx        ← Summary metric cards
-    AiRootCause.tsx       ← AI summary section (lazy-loaded)
-    QaAlertModal.tsx      ← QA alert email modal
-    ClusterCard.tsx       ← Cluster grid card
-    DetailPanel.tsx       ← Slide-in cluster detail panel
-    SkeletonCard.tsx      ← Loading skeleton
-    CsvUploadModal.tsx    ← Drag-and-drop CSV upload modal
+prev_window = tickets with created_at in [now − 60d,  now − 30d)
+curr_window = tickets with created_at in [now − 30d,  now]
+
+curr > prev × 1.25  →  "Increasing"
+curr < prev × 0.75  →  "Decreasing"
+otherwise           →  "Stable"
 ```
+
+### Two-tier assignment
+
+| Path | When | How |
+|------|------|-----|
+| **Webhook** (real-time) | Single new ticket | Cosine similarity to existing centroids — O(k) |
+| **CSV upload** (batch) | Any batch import | Full K-Means re-cluster on all tickets in DB |
 
 ---
 
 ## Database Schema
 
 ```sql
-tickets          (id, ticket_id UNIQUE, subject, description, priority,
-                  ticket_type, product_area, status, source, created_at,
-                  embedding vector(1536))
+tickets          (id UUID PK, ticket_id TEXT UNIQUE NOT NULL,
+                  subject TEXT, description TEXT, priority TEXT,
+                  ticket_type TEXT, product_area TEXT,
+                  status TEXT DEFAULT 'Open', source TEXT,
+                  created_at TIMESTAMPTZ, embedding VECTOR(1536))
 
-issue_clusters   (id, name, description, ticket_count,
-                  prev_window_count, curr_window_count,
-                  trend, centroid_embedding vector(1536), updated_at)
+issue_clusters   (id UUID PK, name TEXT, description TEXT,
+                  ticket_count INT, prev_window_count INT,
+                  curr_window_count INT, trend TEXT,
+                  centroid_embedding VECTOR(1536), updated_at TIMESTAMPTZ)
 
-cluster_members  (ticket_id FK, cluster_id FK, similarity_score,
+cluster_members  (ticket_id UUID FK → tickets,
+                  cluster_id UUID FK → issue_clusters,
+                  similarity_score FLOAT,
                   PRIMARY KEY (ticket_id, cluster_id))
 
-job_runs         (id, job_type, status, tickets_processed,
-                  error_message, started_at, finished_at)
+job_runs         (id UUID PK, job_type TEXT, status TEXT,
+                  tickets_processed INT, error_message TEXT,
+                  started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ)
 ```
 
 **RPC functions:**
-- `find_similar_tickets(embedding, threshold, count)`: cosine similarity search
-- `get_clusters_with_tickets()`: clusters with example tickets as JSONB
+- `find_similar_tickets(embedding, threshold, count)` — cosine similarity search via HNSW
+- `get_clusters_with_tickets()` — clusters with all member tickets as JSONB
+
+---
+
+## Frontend Structure
+
+```
+frontend/
+  app/
+    page.tsx                  ← Main dashboard (state, fetch, layout)
+    layout.tsx
+    globals.css
+    api/
+      clusters/               ← GET clusters · month filter · trend calc
+      upload-csv/             ← POST · embed → K-Means → store (Vercel-compatible)
+      webhooks/incoming-ticket/
+      recluster/              ← POST · Python subprocess (non-Vercel only)
+      generate-summary/
+      draft-qa-alert/
+      similar-tickets/
+      health/
+  components/
+    ClusterCard.tsx           ← Cluster grid card
+    DetailPanel.tsx           ← Slide-in cluster detail panel
+    MetricCard.tsx            ← Summary metric cards
+    CsvUploadModal.tsx        ← Drag-and-drop upload modal
+    QaAlertModal.tsx          ← QA alert email modal
+    AiRootCause.tsx           ← AI root-cause section
+    ClusterTrendsChart.tsx    ← Area chart (Recharts)
+    ClusterPieChart.tsx       ← Pie chart (Recharts)
+    TrendPill.tsx             ← Trend badge + priority dot
+    SkeletonCard.tsx          ← Loading skeleton
+```
 
 ---
 
@@ -273,36 +342,37 @@ job_runs         (id, job_type, status, tickets_processed,
 
 | Script | Tickets | Description |
 |--------|---------|-------------|
-| `seed_kreo_data.py` | 270 | Kreo peripheral hardware support (recommended) |
+| `seed_kreo_data.py` | 270 | Kreo peripheral hardware support tickets (recommended) |
 | `seed_tickets.py` | 80 | Generic mock support tickets |
 | `seed_real_data.py` | 500 | Real Kaggle customer support dataset |
 | `add_tickets.py` | +10 | Simulate new incoming tickets + re-cluster |
 
 ---
 
-## Designed Trends (Kreo dataset)
+## Performance
 
-| Cluster | Trend |
-|---------|-------|
-| Webcam Connectivity Issues | Increasing |
-| Keyboard Connectivity Issues | Increasing |
-| Software / Firmware / RGB | Stable |
-| Shipping / Missing Items | Stable |
-| Hardware Defects | Decreasing |
-| Mouse / Controller Issues | Stable |
-| Returns / Warranty | Decreasing |
+| Operation | Before optimisation | After optimisation |
+|-----------|--------------------|--------------------|
+| Ticket inserts (80 rows) | 80 sequential POSTs ≈ 16 s | 8 parallel batches of 10 ≈ 1 s |
+| GPT cluster naming (k=7) | 7 sequential awaits ≈ 10 s | `Promise.all` × 7 simultaneous ≈ 1.5 s |
+| Cluster + member inserts | Sequential per cluster ≈ 5 s | All k in parallel ≈ 0.5 s |
+| **Total CSV upload (80 rows)** | **60–90 s** | **~10–15 s** |
 
 ---
 
 ## Design Decisions & What I'd Improve
 
-**Why K-Means with a fixed k range?**
-K-Means on L2-normalised embeddings approximates spherical clustering, which works well for semantically distinct support categories. Dynamic k (1 cluster per ~12 tickets, clamped to 7–20) avoids the need to hand-tune k as ticket volume grows.
+**Why K-Means with a dynamic k?**
+K-Means on embeddings approximates spherical clustering, which works well for semantically distinct support categories. Dynamic k (1 cluster per ~12 tickets, clamped 7–20) avoids hand-tuning as ticket volume grows. The pure-JavaScript implementation means zero Python dependency on Vercel.
 
 **What I'd do differently with more time:**
 
-- **Replace K-Means with HDBSCAN.** K-Means forces every ticket into a cluster and requires specifying k upfront. HDBSCAN discovers cluster count automatically and handles outlier tickets gracefully, which is better for real support queues where issues appear and disappear unpredictably.
-- **Finer trend thresholds per cluster.** The current ±25% threshold is global. High-volume clusters need a larger absolute change to be meaningful; low-volume clusters are too sensitive. A per-cluster baseline with statistical significance testing (e.g. z-score on a rolling window) would reduce false trend alerts.
-- **Replace spawned Python processes with a persistent job queue.** Currently `upload-csv` and `recluster` spawn subprocesses via `execFile`. Under concurrent requests this races and blocks the Node event loop. A proper queue (BullMQ + Redis, or Supabase Edge Functions) would handle retries, backpressure, and progress streaming cleanly.
-- **Incremental re-clustering.** Today every CSV upload triggers a full K-Means pass over all tickets. With thousands of tickets this becomes slow. An incremental approach (assign new tickets to nearest centroid first, only re-cluster when centroid drift exceeds a threshold) would keep uploads fast.
-- **Persist cluster identity across re-clusters.** Each re-cluster wipes and rebuilds all clusters, so cluster UUIDs change. This breaks any external references (saved links, alerts). Matching new clusters to old ones by centroid cosine similarity and preserving IDs would give stable cluster identities over time.
+- **Replace K-Means with HDBSCAN.** K-Means forces every ticket into a cluster and requires specifying k upfront. HDBSCAN discovers cluster count automatically and handles outlier tickets gracefully — better for real support queues where issues appear and disappear unpredictably.
+
+- **Finer trend thresholds per cluster.** The current ±25% threshold is global. High-volume clusters need a larger absolute change to be meaningful; low-volume clusters are too sensitive. Per-cluster baselines with statistical significance testing (z-score on a rolling window) would reduce false trend alerts.
+
+- **Incremental re-clustering.** Every CSV upload today triggers a full K-Means pass over all tickets. With thousands of tickets this becomes slow. An incremental approach — assign new tickets to the nearest centroid first, only re-cluster when centroid drift exceeds a threshold — would keep uploads fast regardless of DB size.
+
+- **Persist cluster identity across re-clusters.** Each re-cluster wipes and rebuilds all clusters, so cluster UUIDs change. This breaks external references (saved links, alerts). Matching new clusters to old ones by centroid cosine similarity and preserving IDs would give stable cluster identities over time.
+
+- **Streaming progress for large uploads.** The current API holds the connection open until all work is done. For large CSVs, streaming partial progress (Server-Sent Events or a job-poll endpoint) would make the UX feel much faster.
