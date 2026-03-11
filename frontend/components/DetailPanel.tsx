@@ -190,12 +190,18 @@ export function DetailPanel({ cluster, onClose, onDraftAlert }: DetailPanelProps
           <AiRootCause cluster={cluster} />
 
           {/* Tickets list */}
-          <div style={{ fontSize: 10, color: "var(--t4)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-            Tickets · {cluster.example_tickets.length} shown
-          </div>
+          {(() => {
+            const uniqueTickets = cluster.example_tickets.filter(
+              (tk, i, arr) => arr.findIndex(t => t.subject === tk.subject) === i
+            );
+            return (
+              <>
+                <div style={{ fontSize: 10, color: "var(--t4)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                  Tickets · {uniqueTickets.length} shown
+                </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {cluster.example_tickets.map((tk, i) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {uniqueTickets.map((tk, i) => (
               <div
                 key={tk.id}
                 style={{
@@ -233,8 +239,11 @@ export function DetailPanel({ cluster, onClose, onDraftAlert }: DetailPanelProps
                   </code>
                 </div>
               </div>
-            ))}
-          </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
     </>

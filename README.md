@@ -1,6 +1,6 @@
 # Support Issue Intelligence System
 
-A full-stack dashboard that clusters support tickets by semantic similarity, detects trends, and surfaces AI-powered insights — built as a Kreo internship assignment.
+A full-stack dashboard that clusters support tickets by semantic similarity, detects trends, and surfaces AI-powered insights. Built as a Kreo internship assignment.
 
 ---
 
@@ -78,10 +78,10 @@ cp backend/.env.example backend/.env
 cd backend
 pip install -r requirements.txt
 
-# Option A — Kreo peripheral support tickets (recommended)
+# Option A - Kreo peripheral support tickets (recommended)
 python scripts/seed_kreo_data.py
 
-# Option B — generic mock tickets
+# Option B - generic mock tickets
 python scripts/seed_tickets.py
 ```
 
@@ -97,6 +97,35 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+---
+
+## Deploying to Vercel
+
+The frontend deploys to Vercel with zero extra configuration. A `vercel.json` at the repo root points Vercel at the `frontend/` subfolder automatically.
+
+### Steps
+
+1. Push this repo to GitHub.
+2. Import the project in [vercel.com/new](https://vercel.com/new). Leave **Root Directory** as the default (the `vercel.json` handles it).
+3. Add the three required environment variables in **Settings > Environment Variables**:
+
+| Variable | Where to find it |
+|----------|-----------------|
+| `SUPABASE_URL` | Supabase dashboard > Settings > API > Project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase dashboard > Settings > API > service_role key |
+| `OPENAI_API_KEY` | platform.openai.com > API keys |
+
+4. Deploy. The dashboard, AI summaries, semantic search, and real-time updates all work on Vercel.
+
+### What does not work on Vercel
+
+Two endpoints spawn a Python subprocess (K-Means via scikit-learn) and cannot run in a Vercel serverless environment:
+
+- `POST /api/recluster` - returns `503` with a clear message
+- `POST /api/upload-csv` - returns `503` with a clear message
+
+To use these, run the scripts locally (`add_tickets.py`, `process_csv.py`) or deploy the Python backend separately (Railway, Render, or Fly.io) and call it from there.
 
 ---
 
@@ -236,8 +265,8 @@ job_runs         (id, job_type, status, tickets_processed,
 ```
 
 **RPC functions:**
-- `find_similar_tickets(embedding, threshold, count)` — cosine similarity search
-- `get_clusters_with_tickets()` — clusters with example tickets as JSONB
+- `find_similar_tickets(embedding, threshold, count)`: cosine similarity search
+- `get_clusters_with_tickets()`: clusters with example tickets as JSONB
 
 ---
 
@@ -273,8 +302,8 @@ K-Means on L2-normalised embeddings approximates spherical clustering, which wor
 
 **What I'd do differently with more time:**
 
-- **Replace K-Means with HDBSCAN.** K-Means forces every ticket into a cluster and requires specifying k upfront. HDBSCAN discovers cluster count automatically and handles outlier tickets gracefully — better for real support queues where issues appear and disappear unpredictably.
+- **Replace K-Means with HDBSCAN.** K-Means forces every ticket into a cluster and requires specifying k upfront. HDBSCAN discovers cluster count automatically and handles outlier tickets gracefully, which is better for real support queues where issues appear and disappear unpredictably.
 - **Finer trend thresholds per cluster.** The current ±25% threshold is global. High-volume clusters need a larger absolute change to be meaningful; low-volume clusters are too sensitive. A per-cluster baseline with statistical significance testing (e.g. z-score on a rolling window) would reduce false trend alerts.
 - **Replace spawned Python processes with a persistent job queue.** Currently `upload-csv` and `recluster` spawn subprocesses via `execFile`. Under concurrent requests this races and blocks the Node event loop. A proper queue (BullMQ + Redis, or Supabase Edge Functions) would handle retries, backpressure, and progress streaming cleanly.
-- **Incremental re-clustering.** Today every CSV upload triggers a full K-Means pass over all tickets. With thousands of tickets this becomes slow. An incremental approach — assign new tickets to nearest centroid first, only re-cluster when centroid drift exceeds a threshold — would keep uploads fast.
+- **Incremental re-clustering.** Today every CSV upload triggers a full K-Means pass over all tickets. With thousands of tickets this becomes slow. An incremental approach (assign new tickets to nearest centroid first, only re-cluster when centroid drift exceeds a threshold) would keep uploads fast.
 - **Persist cluster identity across re-clusters.** Each re-cluster wipes and rebuilds all clusters, so cluster UUIDs change. This breaks any external references (saved links, alerts). Matching new clusters to old ones by centroid cosine similarity and preserving IDs would give stable cluster identities over time.

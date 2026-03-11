@@ -12,6 +12,7 @@ build/
 # Environment files (NEVER commit secrets)
 .env
 *.env.local
+!*.env.local.example
 
 # Node / Next.js
 node_modules/

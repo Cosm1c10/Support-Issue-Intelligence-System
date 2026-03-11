@@ -85,6 +85,20 @@ async function updateJobRun(
 }
 
 export async function POST(request: Request) {
+  // Python subprocess is not available on Vercel serverless
+  if (process.env.VERCEL) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Re-clustering requires the Python backend (scikit-learn K-Means). " +
+          "Run `python backend/scripts/add_tickets.py` locally, or set up a " +
+          "dedicated backend service and point BACKEND_URL at it.",
+      },
+      { status: 503 }
+    );
+  }
+
   // Optional shared secret guard
   const syncSecret = process.env.SYNC_SECRET;
   if (syncSecret) {

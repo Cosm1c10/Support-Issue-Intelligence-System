@@ -149,7 +149,9 @@ export function ClusterCard({ cluster, onClick, delay, onDraftAlert }: ClusterCa
 
         {/* Recent tickets preview */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 18 }}>
-          {cluster.example_tickets.slice(0, 3).map((tk) => (
+          {cluster.example_tickets
+            .filter((tk, i, arr) => arr.findIndex(t => t.subject === tk.subject) === i)
+            .slice(0, 3).map((tk) => (
             <div key={tk.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <PriorityDot priority={tk.priority} />
               <span style={{ fontSize: 12, color: "var(--t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, fontWeight: 400 }}>

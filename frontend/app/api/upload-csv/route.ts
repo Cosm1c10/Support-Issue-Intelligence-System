@@ -33,6 +33,18 @@ function getPythonExec(): string {
 }
 
 export async function POST(request: Request) {
+  // Python subprocess is not available on Vercel serverless
+  if (process.env.VERCEL) {
+    return NextResponse.json(
+      {
+        error:
+          "CSV processing requires the Python backend (process_csv.py). " +
+          "Run the script locally: `python backend/scripts/process_csv.py --file your.csv`",
+      },
+      { status: 503 }
+    );
+  }
+
   let tempPath: string | null = null;
 
   try {
