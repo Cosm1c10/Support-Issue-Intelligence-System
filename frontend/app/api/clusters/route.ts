@@ -66,35 +66,18 @@ export async function GET(request: Request) {
     };
     const allClusters = (await rpcRes.json()) as RawCluster[];
 
-    // The RPC orders example_tickets by similarity_score DESC (seed data has score=1.0
-    // so freshly uploaded tickets appear last). Re-sort newest-first so CSV uploads
-    // surface immediately. Also recalculate ticket_count from actual membership since
-    // the stored column can lag after direct inserts.
-    const now = Date.now();
-    const MS_30 = 30 * 24 * 60 * 60 * 1000;
+    // Sort each cluster's example_tickets newest-first so freshly uploaded
+    // tickets surface immediately on the cards (RPC orders by similarity_score
+    // which gives seed data higher priority).
     for (const c of allClusters) {
       if (Array.isArray(c.example_tickets)) {
         c.example_tickets.sort((a, b) =>
           new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
         );
-        // Derive accurate counts from actual membership data
-        const total = c.example_tickets.length;
-        const curr  = c.example_tickets.filter((t) => {
-          const ts = new Date(t.created_at ?? 0).getTime();
-          return ts >= now - MS_30 && ts <= now;
-        }).length;
-        const prev  = c.example_tickets.filter((t) => {
-          const ts = new Date(t.created_at ?? 0).getTime();
-          return ts >= now - 2 * MS_30 && ts < now - MS_30;
-        }).length;
-        (c as Record<string, unknown>).ticket_count      = total;
-        (c as Record<string, unknown>).curr_window_count = curr;
-        (c as Record<string, unknown>).prev_window_count = prev;
-        (c as Record<string, unknown>).trend             = calcTrend(curr, prev);
       }
     }
 
-    // Fast path: no month filter — return recalculated cluster data
+    // Fast path: no month filter — return stored cluster data as-is
     if (!filterByMonth) {
       return NextResponse.json(
         { clusters: allClusters, timestamp: new Date().toISOString() },

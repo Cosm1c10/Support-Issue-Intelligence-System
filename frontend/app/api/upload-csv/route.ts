@@ -230,7 +230,6 @@ export async function POST(request: Request) {
         ticket_type:  row.ticket_type  || "Support Request",
         product_area: row.product_area || clusterName || "General",
         status:       "Open",
-        source:       "csv",
         created_at:   row.date ? new Date(row.date).toISOString() : new Date().toISOString(),
         embedding:    embeddings[i],
       }),
